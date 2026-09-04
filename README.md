@@ -102,7 +102,8 @@ adone install --hooks-only --force    # 每个装了钩子的项目各跑一次
 否则会出现「看起来升了，敲 `adone` 还是旧版」。
 
 最后那条 `--hooks-only --force` 不能省：钩子里烧着安装时的绝对路径，换版本或换位置就会失效，
-而失效的样子和「门禁通过」在终端里一模一样。
+而失效的样子和「门禁通过」在终端里一模一样。Qoder 项目若 auto 没认出来，改成
+`--ide qoder` 或 `--ide all`。写到哪、怎么确认，见第 4 节「按 IDE 接入」。
 
 ### 另外两种装法
 
@@ -135,9 +136,8 @@ adone install --with-hooks         # 技能 + 钩子 + 本机 .git/hooks/pre-com
 adone health --open                # 出一页健康度报告并打开
 ```
 
-Cursor 用户不用改任何东西：默认 `--ide auto` 看不出 Qoder 就只写 `.cursor/hooks.json`。
-只用 Qoder：在 Qoder 终端里跑同一条（认 `QODER_PROJECT_DIR`），或从普通终端加 `--ide qoder`。
-改完 `.qoder/settings.json` 后要重启 Qoder（官方尚未热重载）。
+`install --with-hooks` 默认 `--ide auto`：看不出 Qoder 就只装 Cursor。
+Qoder 用户、或一个仓库两种 IDE 都开，见下面「按 IDE 接入」。
 
 要拆掉（和 `init` 配套，拆完门禁和钩子都不再跑）：
 
@@ -146,7 +146,7 @@ adone clean                        # 先列出要删的，默认不拆
 adone clean --yes                  # 不交互
 ```
 
-别人写在 `hooks.json` 里的钩子、以及不是 adone 渲染的技能，不会动。
+别人写在 `.cursor/hooks.json` / `.qoder/settings.json` 里的钩子、以及不是 adone 渲染的技能，不会动。
 
 `adone init` 探测出来的项都标着「请确认」。覆盖率下限留空，等你跑完门禁拿实测值回填。
 
@@ -175,15 +175,17 @@ GBK 项目上这不是可有可无的：GBK 的尾字节范围含 ASCII，`亄` 
   .adone/                    # 机器写的状态
     latest.json  receipts/   # 全量回执（完成证据只认 latest.json）
     partial.json             # --changed 的调试产物，不是完成证据
-    dirty                    # afterFileEdit 记下的受监视改动
+    dirty                    # 钩子记下的受监视改动
     chain.json               # 回执链头（建议入库）
     test-baseline.json       # 假绿基线（建议入库）
     policy-baseline.json     # 判据基线（建议入库）
     audit.json  audit.html   # 独立复核结论
     report.html              # 健康度报告
-  .cursor/skills/            # adone install 渲染
-  .cursor/hooks.json         # 钩子登记（按本机生成，见下）
-  .git/hooks/pre-commit      # 本机生成，不入库：回执不新鲜时跑全量 gate run
+  .cursor/skills/            # Cursor：adone install 渲染
+  .cursor/hooks.json         # Cursor 钩子（按本机生成，不要入库）
+  .qoder/skills/             # Qoder：同一套技能，装 Qoder 时才有
+  .qoder/settings.json       # Qoder 钩子（按本机生成，不要入库）
+  .git/hooks/pre-commit      # 两边共用，本机生成，不入库
 ```
 
 `.gitignore` 建议这样写（**不要写 `.adone/`**，否则后面的 `!` 全部失效且不报错）：
@@ -195,30 +197,80 @@ GBK 项目上这不是可有可无的：GBK 的尾字节范围含 ASCII，`亄` 
 !.adone/chain.json
 ```
 
-### 钩子：按操作系统在本机装
+### 按 IDE 接入
 
-`hooks.json` 的 `command` 是安装那台机器写的，**不要把别人的登记当通用配置提交。**
-`.git/hooks/pre-commit` 同样是本机生成物，不要入库。
+`adone init` / `gate` / `doctor` 两边一样。不一样的是钩子写到哪、Agent 用哪套事件拦。
+本机 `.git/hooks/pre-commit` 共用：你在终端敲的 `git commit` 两边都靠它。
 
-它落在仓库根上，不一定和 `adone.toml` 同层：多模块工作区里 `adone.toml` 常在子目录，
-钩子仍写进上层仓库的 `.git/hooks/`（配了 `core.hooksPath` 就写到那边），
-脚本会自己 `cd` 回 `adone.toml` 那一层。装完看一眼 `adone install` 打印的路径。
+`--ide`：`auto`（默认）看不出 Qoder 就只装 Cursor；`cursor` / `qoder` 只动一边；`all` 两份都写。
+钩子登记是本机生成物（里面是这台机器的路径），**不要入库**。
 
-| 系统 | 登记的 command | 本机还要有 |
+#### Cursor
+
+```bash
+adone install --with-hooks              # 默认就是这条
+adone install --with-hooks --ide cursor # 显式，不看环境里有没有 Qoder
+adone install --hooks-only --force      # 升完 adone 后重渲
+```
+
+会写 `.cursor/skills/`、`.cursor/hooks.json`，Windows 上还有 `.cursor/hooks/*.exe`（不要提交）。
+
+日常：存盘即可。Agent 回合结束（`stop`）时若改了受监视文件，钩子跑相关用例。
+Agent 跑 `git commit` 会先被 `beforeShellExecution` 拦住，过了再走 pre-commit；
+`--no-verify` 也绕不过 Cursor 那条。
+
+装完看 `adone doctor` 有「钩子：已装」。新开一轮对话，改一个受监视文件后
+`.adone/hook.log` 里应出现 `mark-dirty launched`。
+Windows 上确认 `hooks.json` 的 command 是 `.exe`，不是 `.cmd` / `.py`。
+
+macOS / Linux 登记 `python3 -m actuallydone hook …`；Windows 登记 `.cursor/hooks/<名>.exe`。
+
+#### Qoder
+
+Qoder 不读 `.cursor/hooks.json`。要写 `.qoder/settings.json`。
+
+```bash
+# 在 Qoder 自己的终端里（有 QODER_PROJECT_DIR），auto 会走到 Qoder
+adone install --with-hooks
+
+# 普通终端、或 auto 没认出来时，显式指定（不碰 .cursor/）
+adone install --with-hooks --ide qoder
+adone install --hooks-only --force --ide qoder
+```
+
+会写 `.qoder/skills/`、`.qoder/settings.json`（exec 形式：`command` + `args`，绝对路径）。
+改完配置**重启 Qoder**（官方尚未热重载）。相对路径解不开时 `PreToolUse` 会把每条
+shell 命令都拦下，所以这份 settings **不要入库、不要抄别人的**。
+
+日常和 Cursor 一样：改文件 → 回合结束跑相关用例 → 提交先过全量门禁。
+Qoder 上 Agent 提交走 `PreToolUse`（Bash / Shell），不是 commit 的命令会立刻放行。
+
+装完看 `adone doctor` 有「Qoder 钩子：已装」。改一个受监视文件后 `hook.log` 应有
+`记下 …`；让 Agent 提交一次，应当被拦**并且看到理由**。
+
+#### 一个仓库两种 IDE 都开
+
+```bash
+adone install --with-hooks --ide all
+adone install --hooks-only --force --ide all
+```
+
+两边各写各的目录，pre-commit 仍是一份。
+
+#### 事件对照
+
+| 做什么 | Cursor | Qoder |
 | --- | --- | --- |
-| macOS / Linux | `python3 -m actuallydone hook …` | PATH 里有 `python3` 和 `adone`；不写 `.cmd` / `.exe` |
-| Windows | `.cursor/hooks/<名>.exe` | 安装时复制的本机 `adone.exe`（不要提交）；`.cmd` 只给手跑 |
+| 记 dirty | `afterFileEdit` / `afterTabFileEdit` / `postToolUse` | `PostToolUse`（Write / Edit / search_replace / create_file） |
+| 回合结束跑相关用例 | `stop` → stdout `followup_message` | `Stop` → exit 2 + stderr（`stop_hook_active` 为真立刻放行） |
+| Agent 跑 `git commit` | `beforeShellExecution` matcher `git commit` | `PreToolUse` matcher `Bash` / `Shell`，从 `tool_input.command` 判断 |
+| 人在终端 `git commit` | `.git/hooks/pre-commit` | 同一份 |
 
-会登记 `mark-dirty`（`afterFileEdit` / `afterTabFileEdit` / `postToolUse`）、
-`gate-guard`（`stop`）、`commit-guard`（`beforeShellExecution` 命中 `git commit`）。
-用法见下一节。
+`stop` / `Stop` 的「说完了」不是「做完了」。完成只认全量回执。
 
-Windows 上升完必须 `adone install --hooks-only --force`，然后确认 command 是 `.exe`，
-新开一轮 Agent 对话后 `.adone\hook.log` 里应出现 `mark-dirty launched`。
-
-Qoder 装的是 `.qoder/settings.json`，用 exec 形式（`command` + `args`），里面是
-安装那台机器的绝对路径，**同样不要入库**：Qoder 不承诺钩子进程的工作目录是项目根，
-相对路径解不开时 `PreToolUse` 会把每条 shell 命令都拦下。改完配置要重启 Qoder。
+多模块工作区里 `adone.toml` 常在子目录，pre-commit 仍写进上层仓库的 `.git/hooks/`
+（配了 `core.hooksPath` 就写到那边），脚本会 `cd` 回 `adone.toml` 那一层。
+装完看一眼 `adone install` 打印的路径。
 
 <br/><br/>
 
@@ -254,23 +306,15 @@ git 会在项目根和每个 `watch_roots` 各定位一次仓库，所以子目�
 
 ### 钩子怎么触发（装上才会有）
 
-```bash
-adone install --with-hooks          # 技能 + hooks.json + 本机 pre-commit
-adone install --hooks-only --force  # 升完 adone 或换了钩子口径时重渲
-adone install --with-hooks --ide qoder   # 只写 .qoder/settings.json，不碰 .cursor/
-```
+安装命令和事件名按 IDE 不同，见上一节「按 IDE 接入」。两边跑的是同一套
+`adone hook`：`mark-dirty` 记 dirty，`gate-guard` 跑相关用例，`commit-guard` 拦提交。
 
-| 事件 | 钩子 | 做什么 |
-| --- | --- | --- |
-| `afterFileEdit` / `afterTabFileEdit` / `postToolUse`（Write 等） | `mark-dirty` | 受监视文件写入 `.adone/dirty`。认 `file_path` / `filePath` / `tool_input.path` 等；stdin 按字节读（中文 Windows 的 cp936 会把 UTF-8 正文解坏），解不动就从原文正则抽路径 |
-| `stop`（每轮 Agent 说完） | `gate-guard` | dirty 与 `git status` 合并（路径相对项目根）。没有受监视改动：不回推。有改动：跑 `--changed`；上一轮已通过且文件哈希没变则跳过 |
-| `beforeShellExecution` 命中 `git commit` | `commit-guard` | 先 `gate check`；全量回执对不上则 `deny`（`--no-verify` 也拦） |
-| 本机 `git commit` | `.git/hooks/pre-commit` | 回执已新鲜则放行，否则跑全量 `gate run`，失败拒绝提交 |
+`mark-dirty` 认 `file_path` / `filePath` / `tool_input.path` 等；stdin 按字节读
+（中文 Windows 的 cp936 会把 UTF-8 正文解坏），解不动就从原文正则抽路径。
+`gate-guard` 把 dirty 与 `git status` 合并；没有受监视改动不回推；有改动跑 `--changed`，
+上一轮已通过且文件哈希没变则跳过。
 
-`stop` 的 `status=completed` 只表示「这轮说完了」，不是用户说「做完了」。
-「完成 / 可交付」仍然只认全量回执，那是 `gate check` / 提交时的事。
-
-`sessionStart` 上也挂了 `mark-dirty`，但没有 `file_path`，不会误写 dirty。
+Cursor 的 `sessionStart` 上也挂了 `mark-dirty`，但没有 `file_path`，不会误写 dirty。
 
 ### 相关用例怎么找
 
@@ -306,7 +350,8 @@ git commit
 ```
 
 人在终端 `git commit` 会撞上 pre-commit；Agent 跑 `git commit` 会先撞上
-`commit-guard`，过了再走 pre-commit。两条都装，`--no-verify` 也绕不过 Cursor 那条。
+`commit-guard`（Cursor 的 `beforeShellExecution`，Qoder 的 `PreToolUse`），
+过了再走 pre-commit。两条都装，`--no-verify` 也绕不过 Agent 那条。
 
 提交路径默认仍是全量。要让 pre-commit 走范围化全量，在 `adone.toml` 里显式写：
 
@@ -626,8 +671,8 @@ Maven 输出按 UTF-8 解完再 print 就会炸。v1.4.2 起入口会把 stdout 
 **Q：同一份配置能在 Windows、macOS、Linux 跑吗？**  
 A：能。`adone.toml` 里写 `mvn` / `npm` / `./mvnw` 即可，Windows 上会解析成 `.cmd`
 并由 `cmd /c` 拉起（CreateProcess 不能直接跑批处理）。
-**钩子不行：** `hooks.json` 按安装那台机器生成。Windows 登记 `.exe`，POSIX 登记 `python3`。
-各人在本机跑 `adone install --hooks-only --force`，不要提交对方的 command，也不要提交 `.exe`。
+**钩子不行：** Cursor 的 `hooks.json`、Qoder 的 `settings.json` 都按安装那台机器生成。
+各人在本机重渲（见第 4 节「按 IDE 接入」），不要提交对方的 command，也不要提交 `.exe`。
 
 <br/>
 
