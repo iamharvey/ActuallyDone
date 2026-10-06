@@ -65,6 +65,49 @@ class GateError(Exception):
     pass
 
 
+def _resolved(path: Path) -> Path:
+    try:
+        return path.resolve()
+    except OSError:
+        return path
+
+
+def test_paths(cfg: Config) -> list[Path]:
+    """适配器扫到的测试文件。扫不到就是空列表，上层把这项标成未评估。"""
+    from .adapters import get
+
+    ad = get(cfg.get("tests.adapter") or "", cfg.root)
+    roots = [cfg.root / r for r in (cfg.get("tests.roots") or [])]
+    seen: dict[Path, Path] = {}
+    for p in ad.test_files(roots):
+        if not p.is_file():
+            continue
+        try:
+            p.relative_to(cfg.root)
+        except ValueError:
+            continue
+        seen[_resolved(p)] = p
+    return [seen[k] for k in sorted(seen, key=lambda p: p.as_posix())]
+
+
+def tree_parts(cfg: Config) -> dict:
+    """实现与测试分开哈希。
+
+    测试文件即使不在 watch_roots 里也计入测试哈希，这样「只改了测试」
+    不会被当成实现变动。实现集是受监视文件减去测试文件。
+    """
+    watched = tree_files(cfg)
+    tests = test_paths(cfg)
+    test_ids = {_resolved(p) for p in tests}
+    impl = [p for p in watched if _resolved(p) not in test_ids]
+    return {
+        "impl_hash": _hash_files(cfg, impl),
+        "impl_count": len(impl),
+        "test_hash": _hash_files(cfg, tests) if tests else "",
+        "test_count": len(tests),
+    }
+
+
 def tree_hash(cfg: Config) -> tuple[str, int]:
     """返回 (哈希, 文件数)。文件数过少直接报错——空哈希会让门禁恒等通过。"""
     files = tree_files(cfg)
@@ -671,6 +714,11 @@ def run_gate(cfg: Config, skip: list[str] | None = None,
         print(f"\n{said}")
     pol = _policy_baseline_or_none(cfg)
     prev = chain_head(cfg)
+    tree = {"hash": h, "file_count": n,
+            "roots": cfg.get("gate.watch_roots"),
+            "exts": sorted(cfg.get("gate.watch_exts"))}
+    if not affected:
+        tree.update(full_tree_delta(cfg))
     receipt = {
         "tool": "actuallydone",
         "id": datetime.now().strftime("%Y%m%d-%H%M%S"),
@@ -679,9 +727,7 @@ def run_gate(cfg: Config, skip: list[str] | None = None,
         "seconds": ran["seconds"],
         "scope": "affected" if affected else "full",
         "units": now_units,
-        "tree": {"hash": h, "file_count": n,
-                 "roots": cfg.get("gate.watch_roots"),
-                 "exts": sorted(cfg.get("gate.watch_exts"))},
+        "tree": tree,
         "policy": {"hash": snapshot_hash(snapshot(cfg)),
                    "baseline_hash": (pol or {}).get("hash"),
                    "baseline_reason": (pol or {}).get("reason")},
@@ -694,6 +740,9 @@ def run_gate(cfg: Config, skip: list[str] | None = None,
     }
     if affected and source is not None:
         receipt["carried"] = {"from_receipt": source.get("id"), "units": carried}
+    runner = read_runner(cfg)
+    if runner and not affected:
+        receipt["runner"] = runner
     receipt["evidence"] = evidence_of(cfg, receipt)
     receipt["self_hash"] = self_hash(receipt)
     path = cfg.receipts_dir / f"receipt-{receipt['id']}.json"
@@ -727,6 +776,140 @@ def inheritable_full(cfg: Config) -> tuple[dict | None, str]:
     if not src.get("ok") or not src.get("complete", True):
         return None, f"全量回执 {src.get('id')} 本身未通过或不完整，不能当继承源头。"
     return src, ""
+
+
+def read_runner(cfg: Config) -> dict | None:
+    """钩子在 payload 里看到 model 时写下的 .adone/runner.json。没有就不猜。"""
+    path = cfg.state_dir / "runner.json"
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    model = data.get("model") if isinstance(data, dict) else None
+    if not isinstance(model, str) or not model.strip():
+        return None
+    return {"model": model.strip()}
+
+
+def full_tree_delta(cfg: Config) -> dict:
+    """全量回执上的实现/测试哈希，以及相对上一份带这些字段的全量回执的变化。
+
+    上一份没有这两个字段（升级前的回执，或这是第一份）时不写 impl_changed：
+    不能拿「没有对照」当成「测试没变」。
+    """
+    parts = tree_parts(cfg)
+    out = {
+        "impl_hash": parts["impl_hash"],
+        "impl_count": parts["impl_count"],
+        "test_hash": parts["test_hash"],
+        "test_count": parts["test_count"],
+    }
+    if not parts["test_count"]:
+        out["evaluated"] = False
+        return out
+    prev = previous_parted_full(cfg)
+    if prev is None:
+        return out
+    old = prev.get("tree") or {}
+    out["impl_changed"] = old.get("impl_hash") != parts["impl_hash"]
+    out["tests_changed"] = old.get("test_hash") != parts["test_hash"]
+    return out
+
+
+def previous_parted_full(cfg: Config) -> dict | None:
+    """最新一份带 impl_hash 的全量回执。范围化回执跳过。"""
+    cur = load_latest(cfg)
+    seen: set[str] = set()
+    while cur:
+        key = str(cur.get("self_hash") or cur.get("id") or "")
+        if not key or key in seen:
+            break
+        seen.add(key)
+        tree = cur.get("tree") or {}
+        if cur.get("scope") != "affected" and "impl_hash" in tree:
+            return cur
+        prev = cur.get("prev")
+        if not prev:
+            break
+        cur = _find_receipt_by_hash(cfg, prev)
+    return None
+
+
+def new_tests_waiver_path(cfg: Config) -> Path:
+    return cfg.state_dir / "new-tests-waiver.json"
+
+
+def load_new_tests_waiver(cfg: Config) -> dict | None:
+    path = new_tests_waiver_path(cfg)
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    if not isinstance(data.get("impl_hash"), str) or not data["impl_hash"]:
+        return None
+    reason = data.get("reason")
+    if not isinstance(reason, str) or len(reason.strip()) < 4:
+        return None
+    return data
+
+
+def waive_new_tests(cfg: Config, reason: str) -> int:
+    """把「这次实现变了但没有新测试」记成一次人的豁免，绑在当前实现哈希上。"""
+    reason = (reason or "").strip()
+    if len(reason) < 4:
+        print('豁免必须写理由，例如 adone gate waive-tests "这次只改注释，没有新行为"',
+              file=sys.stderr)
+        return 2
+    parts = tree_parts(cfg)
+    if not parts["test_count"]:
+        print("一个测试文件都没扫到，这项检查本来就是未评估，不用豁免", file=sys.stderr)
+        return 2
+    cfg.state_dir.mkdir(parents=True, exist_ok=True)
+    body = {
+        "impl_hash": parts["impl_hash"],
+        "reason": reason,
+        "at": datetime.now().isoformat(timespec="seconds"),
+    }
+    new_tests_waiver_path(cfg).write_text(
+        json.dumps(body, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"已记下豁免，绑在当前实现哈希 {parts['impl_hash'][:12]}，"
+          f"理由「{reason}」。实现再变则失效。")
+    return 0
+
+
+_NEW_TESTS_PROBLEM = (
+    "实现相对上一份全量回执变了，测试文件没有变。"
+    "新行为要有新用例；如果这次确实没有新行为，"
+    "由人在终端执行 adone gate waive-tests \"理由\"（实现再变则失效）。"
+)
+
+
+def new_tests_problems(cfg: Config, receipt: dict | None) -> tuple[list[str], list[str]]:
+    """全量回执记下「实现变了、测试没变」时，没有对得上的豁免就是问题。
+
+    老回执没有 impl_hash，不回溯。测试文件一个都扫不到时只在依据里写未评估。
+    """
+    if not receipt or receipt.get("scope") == "affected":
+        return [], []
+    tree = receipt.get("tree") or {}
+    if "impl_hash" not in tree:
+        return [], []
+    if not tree.get("test_count"):
+        return [], ["测试文件没扫到，未做「实现变了要有新测试」这项检查"]
+    if "impl_changed" not in tree:
+        return [], []
+    if not tree.get("impl_changed") or tree.get("tests_changed"):
+        return [], []
+    waiver = load_new_tests_waiver(cfg)
+    if waiver and waiver.get("impl_hash") == tree_parts(cfg)["impl_hash"]:
+        return [], [f"实现变了但测试没变，已按理由豁免：「{waiver['reason'].strip()}」"]
+    return [_NEW_TESTS_PROBLEM], []
 
 
 def find_full_receipt(cfg: Config) -> dict | None:
@@ -1055,6 +1238,9 @@ def collect_check(cfg: Config, with_integrity: bool = True,
         problems, details = [str(e)], []
     else:
         problems, details = gate_problems(cfg, receipt, now_hash)
+        nt_bad, nt_detail = new_tests_problems(cfg, receipt)
+        problems.extend(nt_bad)
+        details.extend(nt_detail)
         if not problems and receipt is not None:
             cfg.dirty.unlink(missing_ok=True)  # 改了又改回来，清掉噪音标记
 
@@ -1117,7 +1303,9 @@ def check_gate(cfg: Config, as_json: bool = False, explain: bool = False,
         return 0 if ok else 1
 
     if ok:
-        print("门禁通过：可以宣称完成。")
+        print("门禁通过。这是交给复核者的证据，不是完成声明。"
+              "换一个模型，按 independent-check 跑 "
+              "adone audit --reviewer <模型名>。")
     else:
         print("门禁未通过，以下问题必须先处理：")
         for p in problems:

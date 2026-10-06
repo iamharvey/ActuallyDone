@@ -1,6 +1,6 @@
 # ActuallyDone - adone
 
-当前版本 **v1.4.2**，变更记录见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本 **v1.5.0**，变更记录见 [CHANGELOG.md](CHANGELOG.md)。
 零第三方依赖，Python 3.11+（用到标准库 `tomllib`）。
 
 <br/><br/>
@@ -284,7 +284,7 @@ adone install --hooks-only --force --ide all
 | 时机 | 命令 | 写 `latest.json`？ |
 | --- | --- | --- |
 | 改了受监视文件之后（人或 Agent 手跑；`stop` 钩子也会跑） | `adone gate run --changed` | 否，只写 `.adone/partial.json` |
-| 宣称完成、交付、`git commit` | `adone gate run` | 是，完成证据只认这份 |
+| 交给另一个模型之前、交付、`git commit` | `adone gate run` | 是，证据只认这份 |
 | 多模块 Maven、只想重跑变过的模块 | `adone gate run --affected` | 是，回执写明哪些继承自上一份全量 |
 | 随时复核全量回执是否新鲜 | `adone gate check` | 否，约 1 秒 |
 
@@ -292,9 +292,19 @@ adone install --hooks-only --force --ide all
 adone gate run --changed   # 只跑与 dirty / git diff 相关的用例
 adone gate run             # 全量，写回执
 adone gate run --affected  # 只跑变过的模块（要先有一份带单元哈希的全量绿回执）
-adone gate check           # 树哈希必须对上 latest.json
+adone gate check           # 树哈希必须对上 latest.json；通过了是证据，不是完成声明
 adone gate slow            # 最近一轮最慢的用例 / 模块
+adone gate waive-tests "这次只改注释，没有新行为"   # 人来豁免，实现再变则失效
 ```
+
+全量回执会把实现文件和测试文件分开哈希。相对上一份全量回执，实现变了而测试文件没变，
+`gate check` 不通过，`git commit` 也会被拦住。扫不到测试文件时这项标成未评估，不失败。
+老回执没有这两个字段，升级后的第一次全量不回溯判失败。
+
+只改测试里的注释也会让测试哈希变化，从而放行。删用例、掏空断言仍由 `integrity` 抓。
+
+`gate check` 通过时的那句话是「把回执交给另一个模型」，不是「可以完成了」。
+换一个模型跑 `adone audit --reviewer <模型名>`。
 
 `--changed` 的文件名单：`.adone/dirty` 与 `git status`（含未跟踪）合并。
 git 会在项目根和每个 `watch_roots` 各定位一次仓库，所以子目录自带 `.git`
@@ -556,11 +566,13 @@ adone gate run
 ## 7. 如何更新 / 重置基线
 
 基线有两份，都只报**放松**，收紧只提示。确属合理的放宽，必须写理由记账。
+「实现变了但测试没变」另有一份豁免，绑的是当前实现哈希，不是一份永久基线。
 
 | 基线 | 锁什么 | 接受本次快照 |
 | --- | --- | --- |
 | `.adone/test-baseline.json` | 用例是否消失、跳过是否变多、无断言空壳、覆盖率下限 | `adone integrity --accept-baseline "理由"` |
 | `.adone/policy-baseline.json` | 监视范围、步骤 argv、契约条数、豁免名单 | `adone policy --accept "理由"` |
+| `.adone/new-tests-waiver.json` | 这一次「实现变了但测试没变」 | `adone gate waive-tests "理由"` |
 
 ```bash
 adone integrity                              # 只看，不改
@@ -573,7 +585,10 @@ adone policy --accept "把 go vet 并进 build 步骤，命令因此变了"
 首次 `gate run` 会在还没有判据基线时自动建一份。已经有基线时，`gate run` **不会**替你重建；
 删掉 `policy-baseline.json` 想让锁失效，上一份回执里记着指纹，会被拦住。
 
-复核者不允许跑 `--accept` / `--accept-baseline`。
+复核者不允许跑 `--accept` / `--accept-baseline` / `waive-tests`。
+装了钩子之后，Agent 在 IDE 里执行这三条也会被拒绝：放宽只能由人在终端里敲。
+直接改这几个 JSON，和直接改基线一样，钩子管不到。已装过钩子的仓库要重新
+`adone install --hooks-only`，Cursor 的 `beforeShellExecution` matcher 才会放宽到这几条。
 
 <br/><br/>
 
@@ -589,13 +604,15 @@ adone policy --accept "把 go vet 并进 build 步骤，命令因此变了"
 
    没装技能时改成：`跑 adone brief，按它说的做，然后跑 adone audit`。
 
-2. 复核者先 `adone brief`（冷启动：判据在哪、现有回执是哪份、不许碰什么），再 `adone audit`。
+2. 复核者先 `adone brief`（冷启动：判据在哪、现有回执是哪份、不许碰什么），再
+   `adone audit --reviewer <模型名>`。回执里若有 `runner.model`（钩子见到模型名时写下），
+   两边相同则审计不通过。缺任何一边只写进依据。
 3. 不信任那份回执时，跑 `adone audit --rerun` 全量重跑再比对。
 4. 未通过则把问题清单原样交回实现者。修完由**复核者再核一次**，不接受实现者自证。
 
 ```bash
 adone brief
-adone audit                  # 默认抽 2 条用例当场真跑
+adone audit --reviewer <模型名>   # 默认抽 2 条用例当场真跑，并对照模型
 adone audit --rerun          # 自己把门禁跑一遍，结果只写进 .adone/audits/
 adone audit report --open    # 已有 audit.json 时只出 HTML
 ```

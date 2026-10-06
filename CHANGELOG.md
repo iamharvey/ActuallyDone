@@ -2,6 +2,15 @@
 
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## v1.5.0 — 2026-10-06
+
+门禁通过不再被说成「可以宣称完成」。回执是交给另一个模型的证据。
+
+- **实现变了、测试没变**：全量回执分开记实现哈希和测试哈希。相对上一份带这两个字段的全量回执，实现变了而测试文件没变，`gate check` 不通过，提交也会被拦住。扫不到测试文件时标成未评估。老回执不回溯。
+  人可以 `adone gate waive-tests "理由"`，豁免绑在当前实现哈希上，实现再变则失效。只改测试注释会让测试哈希变化从而放行，删用例仍由 `integrity` 抓。
+- **模型不能自己放宽尺子**：钩子拒绝 `integrity --accept-baseline`、`policy --accept`、`gate waive-tests`。人在 IDE 外的终端敲，钩子看不到。Cursor 的 `beforeShellExecution` matcher 放宽到这几条，已装过的仓库要重新 `adone install --hooks-only`。
+- **同一个模型自己审自己**：钩子 payload 里有 `model` 时写入 `.adone/runner.json`，全量回执抄一份 `runner.model`。`adone audit --reviewer` 与它相同则多一条问题；缺任何一边只写进依据。没有 `audit` 不拒绝提交。
+
 ## v1.4.2 — 2026-09-03
 
 中文 Windows 上 pre-commit 跑 `gate run` 会 `UnicodeEncodeError: 'gbk' codec can't encode`。

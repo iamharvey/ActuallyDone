@@ -10,7 +10,7 @@
 - **默认开抽查**。收工钩子每次都跑 `check`，抽查的几秒不该压在那条路径上；
   但复核只跑一次，省这几秒等于放掉「回执写着通过其实没跑」这一类。
 - **不写 latest.json、不推进证据链**。复核者顺手覆盖被审的回执，等于把证据抹掉。
-- **口吻是复核者的**。`check` 通过时说「可以宣称完成」，这里说「独立复核通过」——
+- **口吻是复核者的**。`check` 通过时把回执交给另一个模型，这里说「独立复核通过」——
   复核者不该替实现者宣布完成，它只能说自己核过了什么。
 """
 
@@ -30,6 +30,7 @@ from .report import open_report, render_audit
 FORBIDDEN = (
     "adone policy --accept（把被放松的判据记成新基线）",
     "adone integrity --accept-baseline（把新增的松动记成新基线）",
+    "adone gate waive-tests（把「没新测试」记成豁免）",
     "改 adone.toml、删验收契约、手改 .adone/ 下的回执与基线",
     "改代码去「修」门禁——复核者只报告，修由实现者做",
 )
@@ -95,12 +96,32 @@ def _evidence_line(base: str, rerun: bool, spotcheck: int) -> str:
     return f"{base or '证据强度：没有回执可依'} · 已由独立复核者{how}"
 
 
+def reviewer_notes(receipt: dict | None, reviewer: str | None) -> tuple[list[str], list[str]]:
+    """两边模型都有且相同，才是问题。缺任何一边只写进依据。"""
+    theirs = ((receipt or {}).get("runner") or {}).get("model") or ""
+    if not isinstance(theirs, str):
+        theirs = ""
+    theirs = theirs.strip()
+    mine = (reviewer or "").strip()
+    if theirs and mine:
+        if theirs == mine:
+            return [f"复核者与跑出门禁的是同一个模型（{theirs}）"], []
+        return [], [f"复核者 {mine}，跑出门禁的是 {theirs}"]
+    if not mine:
+        return [], ["未标明复核者（--reviewer），无法判断是不是同一个模型"]
+    return [], ["回执没有 runner.model，无法对照复核者"]
+
+
 def run_audit(cfg: Config, spotcheck: int = 2, rerun: bool = False,
               as_json: bool = False, html_out: str | None = None,
-              html_open: bool = False) -> int:
+              html_open: bool = False, reviewer: str | None = None) -> int:
     got = collect_check(cfg, with_integrity=True, spotcheck=spotcheck)
     problems = list(got["problems"])
+    details = list(got["details"])
     receipt = got["receipt"]
+    rev_bad, rev_detail = reviewer_notes(receipt, reviewer)
+    problems.extend(rev_bad)
+    details.extend(rev_detail)
 
     mine: dict | None = None
     if rerun:
@@ -122,7 +143,7 @@ def run_audit(cfg: Config, spotcheck: int = 2, rerun: bool = False,
         "mode": "rerun" if rerun else "review",
         "ok": ok,
         "problems": problems,
-        "details": got["details"],
+        "details": details,
         "audited_receipt": {
             "id": got["receipt_id"],
             "self_hash": (receipt or {}).get("self_hash"),
@@ -227,7 +248,8 @@ def brief(cfg: Config) -> int:
 
 要跑的：
   adone doctor           配置与现实是否一致、钩子还灵不灵
-  adone audit            独立复核（默认抽两条契约绑定的用例当场真跑）
+  adone audit --reviewer <模型名>
+                         独立复核，并与回执里的 runner.model 对照；相同则不通过
   adone audit --rerun    不信任回执时：自己把门禁全量跑一遍再比对
   adone audit report     把已有结论渲成一页 HTML，不重跑检查
 
@@ -266,4 +288,5 @@ def cmd_audit(cfg: Config, args) -> int:
         return 2
     return run_audit(cfg, spotcheck=n, rerun=args.rerun, as_json=args.json,
                      html_out=getattr(args, "out", None),
-                     html_open=getattr(args, "open", False))
+                     html_open=getattr(args, "open", False),
+                     reviewer=getattr(args, "reviewer", None))

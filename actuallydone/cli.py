@@ -79,6 +79,11 @@ def cmd_gate_contract(args) -> int:
     return verify_only(_cfg(args))
 
 
+def cmd_gate_waive(args) -> int:
+    from .gate import waive_new_tests
+    return waive_new_tests(_cfg(args), args.reason)
+
+
 def cmd_integrity(args) -> int:
     from .integrity import cmd_integrity as run
     return run(_cfg(args), args)
@@ -200,6 +205,11 @@ def build_parser() -> argparse.ArgumentParser:
     g = gsub.add_parser("verify-contract", help="只校验验收契约")
     g.set_defaults(func=cmd_gate_contract)
 
+    g = gsub.add_parser("waive-tests",
+                        help="人来豁免这一次「实现变了但测试没变」，绑在当前实现哈希上")
+    g.add_argument("reason", help="理由，写给人看；实现再变则失效")
+    g.set_defaults(func=cmd_gate_waive)
+
     p = sub.add_parser("integrity", help="假绿检测：抓「把门禁改绿」而不是「把代码改对」")
     p.add_argument("--json", action="store_true")
     p.add_argument("--accept-baseline", metavar="理由",
@@ -222,6 +232,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true")
     p.add_argument("--out", help="HTML 报告路径，默认 <state_dir>/audit.html")
     p.add_argument("--open", action="store_true", help="生成后打开 HTML")
+    p.add_argument("--reviewer", metavar="模型名",
+                   help="复核者的模型。与回执 runner.model 相同则判不通过；缺一边只记入依据")
     p.set_defaults(func=cmd_audit)
     asub = p.add_subparsers(dest="audit_cmd")
     r = asub.add_parser("report", help="把已有审计结论渲成一页 HTML，不重跑检查")

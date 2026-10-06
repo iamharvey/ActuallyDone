@@ -717,7 +717,8 @@ def our_hooks(cfg: Config | None = None) -> dict:
              "loop_limit": 3, "failClosed": False}],
         "beforeShellExecution": [
             {"command": hook_command("commit-guard", cfg), "timeout": 30,
-             "matcher": r"git\s+commit", "failClosed": True}],
+             "matcher": (r"git\s+commit|--accept-baseline|waive-tests|\bpolicy\b"),
+             "failClosed": True}],
     }
 
 

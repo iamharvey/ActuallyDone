@@ -246,7 +246,7 @@ class TestHooksJson(ProjectCase):
                 self.assertEqual(cmd, f".cursor/hooks/{name}.exe")
                 self.assertFalse(install.windows_hook_never_starts(cmd))
         self.assertEqual(merged["hooks"]["beforeShellExecution"][-1]["matcher"],
-                         r"git\s+commit")
+                         r"git\s+commit|--accept-baseline|waive-tests|\bpolicy\b")
 
     def test_旧版bash钩子会被摘掉(self):
         old = {"version": 1, "hooks": {
@@ -723,6 +723,50 @@ class TestHookrun(ProjectCase):
         self.assertEqual(
             paths_from_payload({"hook_event_name": "sessionStart"}), [])
         self.assertEqual(paths_from_payload({}), [])
+
+    def test_ls与git_status放行且不写hook_log(self):
+        self._watch_go()
+        for cmd in ("ls", "git status"):
+            got = self.fire("commit-guard", {"command": cmd})
+            self.assertEqual(got.get("permission"), "allow", cmd)
+        self.assertFalse((self.root / ".adone" / "hook.log").exists())
+
+    def test_自行放宽被拒绝(self):
+        self._watch_go()
+        commands = (
+            "adone integrity --accept-baseline '把下限降了'",
+            "python -m actuallydone policy --accept '命令变了'",
+            "adone gate waive-tests '这次只改注释'",
+            "adone integrity --accept-baseline x",
+        )
+        for cmd in commands:
+            got = self.fire("commit-guard", {"tool_input": {"command": cmd}})
+            self.assertEqual(got.get("permission"), "deny", cmd)
+            self.assertIn("自己销账", got.get("agent_message", ""), cmd)
+
+    def test_policy不带accept不算放宽(self):
+        self._watch_go()
+        got = self.fire("commit-guard", {"command": "adone policy --json"})
+        self.assertEqual(got.get("permission"), "allow")
+        self.assertFalse((self.root / ".adone" / "hook.log").exists())
+
+    def test_commit消息里出现waive_tests仍按提交拦(self):
+        self._watch_go()
+        got = self.fire("commit-guard",
+                        {"command": "git commit -m 'later waive-tests'"})
+        self.assertEqual(got.get("permission"), "deny")
+        self.assertIn("全量", got.get("agent_message", ""))
+        self.assertNotIn("自己销账", got.get("agent_message", ""))
+
+    def test_payload里的model写入runner_json(self):
+        self._watch_go()
+        self.fire("mark-dirty", {
+            "file_path": str(self.root / "internal/calc.go"),
+            "model": "gpt-test",
+        })
+        data = json.loads((self.root / ".adone" / "runner.json").read_text(
+            encoding="utf-8"))
+        self.assertEqual(data["model"], "gpt-test")
 
     def test_commit_guard非commit放行(self):
         self.make_go_project()

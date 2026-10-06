@@ -168,7 +168,30 @@ def _begin(payload: dict | None) -> dict:
     global _protocol
     data = payload if isinstance(payload, dict) else {}
     _protocol = protocol_for(data)
+    _note_model(data)
     return data
+
+
+def _note_model(payload: dict) -> None:
+    """Codex 的钩子 payload 带 model。没有这个字段就不写，不猜测。"""
+    model = payload.get("model")
+    if not isinstance(model, str) or not model.strip():
+        return
+    root = _root()
+    dest = root / ".adone"
+    try:
+        from .config import Config, ConfigError
+        try:
+            dest = Config.load(root).state_dir
+        except ConfigError:
+            pass
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / "runner.json").write_text(json.dumps({
+            "model": model.strip(),
+            "at": datetime.now().isoformat(timespec="seconds"),
+        }, ensure_ascii=False) + "\n", encoding="utf-8")
+    except OSError:
+        pass
 
 
 def _log(cfg: Config | None, event: str, msg: str, root: Path | None = None) -> None:
@@ -478,28 +501,55 @@ def cmd_gate_guard(_args=None) -> int:
 
 
 _COMMIT_RE = re.compile(r"\bgit\b(?:\s+\S+)*\s+commit\b")
+# --accept-baseline 也含有 --accept 这串，所以放宽判据的 --accept 不能吃到它。
+_POLICY_ACCEPT_RE = re.compile(r"--accept(?!-)\b")
 
 
 def _is_git_commit(command: str) -> bool:
     return bool(_COMMIT_RE.search(command or ""))
 
 
-def cmd_commit_guard(_args=None) -> int:
-    """拦 git commit（含 --no-verify）：必须先有新鲜的全量回执。
+def _is_self_relax(command: str) -> bool:
+    """模型自己销账：放宽假绿基线、放宽判据、豁免「没新测试」。"""
+    cmd = command or ""
+    if re.search(r"--accept-baseline\b", cmd) and re.search(r"\bintegrity\b", cmd):
+        return True
+    if re.search(r"\bwaive-tests\b", cmd):
+        return True
+    if re.search(r"\bpolicy\b", cmd) and _POLICY_ACCEPT_RE.search(cmd):
+        return True
+    return False
 
-    Cursor 走 beforeShellExecution，matcher 已经把命令收窄到 git commit。
-    Qoder 的 matcher 只能收到工具名（Bash / Shell），每一条 ls 都会进来，
-    所以先判命令、再读配置写日志：否则每敲一条命令都要解一遍 adone.toml，
-    并往 hook.log 里堆一行，真正那条 commit 记录就淹了。
-    """
-    payload = _payload()
+
+def _shell_command(payload: dict) -> str:
     command = payload.get("command") or ""
     if not command:
         tool_input = payload.get("tool_input")
         if isinstance(tool_input, dict):
             command = tool_input.get("command") or ""
-    if not _is_git_commit(command):
+    return command or ""
+
+
+def cmd_commit_guard(_args=None) -> int:
+    """拦 git commit（含 --no-verify）：必须先有新鲜的全量回执。
+    也拦模型自己放宽尺子。
+
+    Cursor 走 beforeShellExecution。Qoder 的 matcher 只能收到工具名（Bash / Shell），
+    每一条 ls 都会进来，所以先判命令、再读配置写日志：否则每敲一条命令都要解一遍
+    adone.toml，并往 hook.log 里堆一行，真正那条 commit 记录就淹了。
+    """
+    payload = _payload()
+    command = _shell_command(payload)
+    if not _is_git_commit(command) and not _is_self_relax(command):
         return _emit({"permission": "allow"})
+
+    if _is_self_relax(command) and not _is_git_commit(command):
+        cfg, root = _load()
+        _log(cfg, "beforeShellExecution", "拒绝自行放宽", root)
+        msg = ("放宽只能由人在终端里执行，不要在这一轮里自己销账。"
+               "integrity --accept-baseline、policy --accept、"
+               "gate waive-tests 都一样。")
+        return _emit({"permission": "deny", "user_message": msg, "agent_message": msg})
 
     cfg, root = _load()
     _log(cfg, "beforeShellExecution", "commit-guard launched", root)

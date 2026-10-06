@@ -12,3 +12,4 @@ dist/
 !.adone/test-baseline.json
 !.adone/policy-baseline.json
 !.adone/chain.json
+!.adone/new-tests-waiver.json

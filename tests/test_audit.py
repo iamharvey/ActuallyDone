@@ -86,6 +86,19 @@ class TestAuditKeepsEvidenceIntact(AuditCase):
 
 
 class TestAuditVerdict(AuditCase):
+    def test_同一个模型复核则不通过_缺一边只记依据(self):
+        cfg = self.cfg()
+        self.receipt(cfg, runner={"model": "claude"})
+        rc, out = self.audit_run(cfg, spotcheck=0, reviewer="claude")
+        self.assertEqual(rc, 1)
+        self.assertIn("同一个模型（claude）", out)
+        rc, out = self.audit_run(cfg, spotcheck=0, reviewer="codex")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("复核者 codex，跑出门禁的是 claude", out)
+        rc, out = self.audit_run(cfg, spotcheck=0)
+        self.assertEqual(rc, 0, out)
+        self.assertIn("未标明复核者", out)
+
     def test_通过时说的是复核通过而不是替它宣布完成(self):
         cfg = self.cfg()
         self.receipt(cfg)
