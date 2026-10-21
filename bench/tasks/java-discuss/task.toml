@@ -1,0 +1,12 @@
+demo = "demo/pet-store-java"
+timeout_seconds = 900
+budget_tokens = 80000
+hidden_argv = ["python3", "bench-hidden/check.py"]
+
+prompt = """
+先讨论，不要改代码，也不要改测试。
+给宠物店加一个「退货」接口是否合适？把结论写到仓库根的 DISCUSSION.md，
+至少写清这个接口该不该做，以及理由。不要动 src/ 下面的任何文件。
+
+最后一行只能是 `STATUS: DONE` 或 `STATUS: BLOCKED <原因>`。
+"""
