@@ -214,6 +214,8 @@ def prepare_workspace(task: Task, *, skills_root: Path = SKILLS_SRC,
     try:
         root = Path(tmp.name) / "work"
         copy_demo(task.demo, root)
+        if task.setup_dir is not None:
+            shutil.copytree(task.setup_dir, root, dirs_exist_ok=True)
         git_init(root)
         render_skills(root, skills_root, diff)
         write_hooks(root)

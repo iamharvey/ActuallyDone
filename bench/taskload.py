@@ -22,6 +22,8 @@ class Task:
     budget_tokens: int
     hidden_dir: Path
     hidden_argv: list[str]
+    # 开工前就在工作区里的东西，agent 看得到，不算它的改动
+    setup_dir: Path | None = None
 
 
 def list_ids() -> list[str]:
@@ -56,6 +58,7 @@ def load(task_id: str) -> Task:
         budget_tokens=int(data.get("budget_tokens") or 0),
         hidden_dir=root / "hidden",
         hidden_argv=[str(x) for x in argv],
+        setup_dir=root / "setup" if (root / "setup").is_dir() else None,
     )
 
 

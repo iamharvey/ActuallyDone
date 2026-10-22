@@ -1,0 +1,4 @@
+id = "recall#会员积分"
+kind = "recall"
+query = "会员积分怎么兑换"
+must = ["会员积分"]

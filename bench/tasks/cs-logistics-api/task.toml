@@ -1,0 +1,13 @@
+demo = "demo/cs-agent-eval"
+timeout_seconds = 600
+budget_tokens = 80000
+hidden_argv = ["python3", "bench-hidden/check.py"]
+
+prompt = """
+在 cs_agent.py 里加一个 `track(no: str) -> str`：按运单号调用物流接口，返回接口响应里的 `status`。
+接口说明在 docs/logistics-api.md，接口地址从环境变量 LOGISTICS_API_BASE 读，只用 Python 标准库。
+在 tests/ 下用 unittest 补用例，不要连外网。
+不要改 adone.toml，不要放宽基线，不要自己销账。
+
+最后一行只能是 `STATUS: DONE` 或 `STATUS: BLOCKED <原因>`。
+"""

@@ -2,6 +2,16 @@
 
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## v1.6.1 — 2026-10-22
+
+修两个用户反馈的 Bug，README 重写。门禁判定不变：有既有失败时全量门禁照样不绿，提交照样被拦，由人决定。
+
+- **遇到与本次改动无关的失败用例就停工**：`completion-gate` 新增「有用例失败，但不是这次改的」。先用上一份回执的 `tests.failed_names` 或在 `HEAD` 上单跑判归属，确认无关就做完本轮的事，不修、不跳过、不删那条用例，交付时单列。stop 钩子推回时也这么说，不再只说「先修这些问题」。
+- **照着接口文档返回示例值，没真的调接口**：`completion-gate`、`test-driven-dev`、`verified-delivery` 要求真的发请求，用例断言请求本身（方法、路径、参数）。细则在 `completion-gate/references/external-api.md`。
+- `bench/` 新增两道题 `cs-unrelated-red`、`cs-logistics-api` 测这两种情况。题目可以带 `setup/`，放进基线提交，agent 看得到，但不算它的改动。
+- `completion-gate` 的「诚实的边界」挪到 `references/limits.md`，正文回到 120 行以内。
+- README 从近 800 行缩到一页：是什么、怎么装、怎么上手、日常怎么用。安装、IDE 钩子、门禁、配置、基线、复核、健康报告、常见问题拆到 `docs/` 下各自一页，评测流程写在 `bench/README.md`。
+
 ## v1.6.0 — 2026-10-21
 
 技能怎么改，改到仓库顶层的 `bench/` 里用 Propose–Probe–Compose 评，不进 `actuallydone` 的包。门禁、钩子和安装命令与 v1.5.0 相同。

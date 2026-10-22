@@ -661,6 +661,8 @@ class TestHookrun(ProjectCase):
         self.assertIn("followup_message", got)
         self.assertIn("相关用例", got["followup_message"])
         self.assertIn("--changed", got["followup_message"])
+        self.assertIn("与本轮改动无关", got["followup_message"])
+        self.assertIn("不要停下", got["followup_message"])
 
     def test_gate_guard上次changed已通过且文件未改则跳过(self):
         from actuallydone.changed import file_hashes, _write_partial

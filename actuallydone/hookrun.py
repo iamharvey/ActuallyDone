@@ -487,13 +487,15 @@ def cmd_gate_guard(_args=None) -> int:
 
     problems = data.get("problems") or []
     skills = cfg.get("project.skills_dir") or ".cursor/skills"
-    lines = ["【相关用例未通过】本轮改了受监视文件，相关测试没过。先修这些问题，不要跑全量门禁：", ""]
+    lines = ["【相关用例未通过】本轮改了受监视文件，相关测试没过。是本轮改坏的就先修，不要跑全量门禁：", ""]
     lines += [f"{i}. {p}" for i, p in enumerate(problems, 1)]
     lines += [
         "",
         f"按 {skills}/completion-gate/SKILL.md：只跑 `adone gate run --changed`。",
         "不要跑 `adone gate run` 全量——那是 git commit 或宣称完成时的事。",
         "如果找不到相关用例，先写一条对着这些文件的测试再继续。",
+        "失败的用例如果与本轮改动无关（改之前就失败），不要停下，也不要修、跳过或删掉它："
+        "按「有用例失败，但不是这次改的」给出归属证据，做完本轮的事，交付时单独列出。",
         "如果确实跑不起来，直接告诉我卡在哪一步、看到什么输出。",
     ]
     _log(cfg, "stop", f"相关用例未通过（{len(problems)} 个问题，loop_count={loops}），已回推")

@@ -1,0 +1,12 @@
+demo = "demo/cs-agent-eval"
+timeout_seconds = 600
+budget_tokens = 80000
+hidden_argv = ["python3", "bench-hidden/check.py"]
+
+prompt = """
+查物流时也要认「包裹」这个说法：用户说「包裹还没收到」时属于查物流，不能打断，
+哪怕消息里带了大额金额。在 adone/eval/ 补一条场景覆盖这句话。
+不要改 adone.toml，不要放宽基线，不要自己销账。
+
+最后一行只能是 `STATUS: DONE` 或 `STATUS: BLOCKED <原因>`。
+"""
