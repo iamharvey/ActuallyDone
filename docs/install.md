@@ -13,7 +13,7 @@ pipx install git+https://github.com/iamharvey/ActuallyDone.git
 adone --version
 ```
 
-**地址后面不要加 `@v1.6.1` 这样的 tag。** pipx 会把这串地址记成以后的升级源，
+**地址后面不要加 `@v1.7.0` 这样的 tag。** pipx 会把这串地址记成以后的升级源，
 钉了 tag 就钉死在那一版，之后 `pipx upgrade` 只会说「已是最新」。
 
 没有 pipx 先装一个（Windows 把 `python3` 换成 `py -3`）：

@@ -35,6 +35,8 @@ REQUIRED = (
     ("completion-gate/SKILL.md", "别人留下的失败用例不是你停工的理由。"),
     ("completion-gate/SKILL.md", "不修它，不跳过、不删、不改弱断言、不加豁免。"),
     ("completion-gate/SKILL.md", "不要把文档里的示例响应写成返回值、常量或兜底分支。"),
+    ("test-integrity/SKILL.md", "调用之后不许改规则要读的字段，再把结果当成规则命中。"),
+    ("acceptance-contract/SKILL.md", "规则能不能命中，要有一条走同一入口的反例。"),
     ("independent-check/SKILL.md", "`{{ADONE}} policy --accept`"),
     ("independent-check/SKILL.md", "`{{ADONE}} integrity --accept-baseline`"),
     ("independent-check/SKILL.md", "`{{ADONE}} gate waive-tests`"),

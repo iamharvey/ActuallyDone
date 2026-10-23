@@ -1,0 +1,168 @@
+# Go 基线。复制到放 go.mod 的那一层，按下面的目录约定改路径。
+#
+# 约定：
+#   cmd/、internal/          单元测试，go test 这些目录
+#   test/api/                接口测试，不起外部依赖，或只用 httptest
+#   test/e2e/                端到端，可以起服务、连数据库
+#   .cursor/skills           adone install 渲染的技能
+#
+# goimports、staticcheck、gitleaks、adone 要在 PATH 上。
+# 没有外网时，把最后面注释掉的 govulncheck 继续留着。
+# golangci-lint 如果已经开了 govet 和 staticcheck，就不要再把下面的 vet、staticcheck 留着，同一种检查跑两遍。
+
+version = 1
+
+[project]
+name = "go-service"
+ecosystems = ["go"]
+state_dir = ".adone"
+material_dir = "adone"
+skills_dir = ".cursor/skills"
+source_encoding = "utf-8"
+
+[gate]
+watch_roots = ["cmd", "internal", "test"]
+watch_exts = [".go"]
+# 跑一次 adone gate hash，填一个略低于实际文件数的值。1 等于没有保护。
+min_tree_files = 1
+keep_receipts = 20
+
+# 敏感信息。命中就非 0。扫工作区当前文件，不依赖 git 历史。
+# 要收紧规则再加 --config .gitleaks.toml。
+[[gate.step]]
+name = "敏感信息"
+cwd = "."
+argv = ["gitleaks", "detect", "--source", ".", "--no-git", "--redact"]
+
+# 格式。gofmt 永远退出 0，没格式化的文件名走 stdout，所以必须是 kind = "fmt"。
+[[gate.step]]
+name = "gofmt"
+cwd = "."
+kind = "fmt"
+argv = ["gofmt", "-l", "."]
+
+# import 分组。同样是退出 0、有输出即失败。
+[[gate.step]]
+name = "goimports"
+cwd = "."
+kind = "fmt"
+argv = ["goimports", "-l", "."]
+
+[[gate.step]]
+name = "go vet"
+cwd = "."
+argv = ["go", "vet", "./..."]
+
+# 风格和常见缺陷。staticcheck 不通过时自己退出非 0。
+[[gate.step]]
+name = "staticcheck"
+cwd = "."
+argv = ["staticcheck", "./..."]
+
+# 技能正文：frontmatter、断链、引用的行号、超过 120 行只是警告。有错误才非 0。
+[[gate.step]]
+name = "技能检查"
+cwd = "."
+argv = ["adone", "health", "--only", "skills"]
+
+[[gate.step]]
+name = "go build"
+cwd = "."
+argv = ["go", "build", "./..."]
+
+# 单元测试。-v 必须留着，不然适配器解析不出用例名，退出码 0 也不能当证据。
+# 覆盖率取这一步输出里最后一行 coverage:。多包时那是最后一个包的数字，不是合计。
+# 要查竞态，把 -race 加进 argv，再 adone policy --accept。它会明显变慢。
+[[gate.step]]
+name = "单元测试"
+cwd = "."
+kind = "test"
+adapter = "go"
+timeout_seconds = 1800
+invalid_marks = ["整批跳过"]
+argv = ["go", "test", "./cmd/...", "./internal/...", "-count=1", "-v", "-coverprofile={cover_out}"]
+
+# 接口测试。目录不要放进上面的 ./internal/...，否则会跑两遍。
+[[gate.step]]
+name = "API 测试"
+cwd = "."
+kind = "test"
+adapter = "go"
+timeout_seconds = 1800
+invalid_marks = ["整批跳过"]
+argv = ["go", "test", "./test/api/...", "-count=1", "-v"]
+
+# 端到端。超时把进程树杀掉，避免占着端口。
+[[gate.step]]
+name = "端到端"
+cwd = "."
+kind = "test"
+adapter = "go"
+timeout_seconds = 3600
+stall_seconds = 120
+invalid_marks = ["整批跳过"]
+argv = ["go", "test", "./test/e2e/...", "-count=1", "-v"]
+
+# 已知漏洞。要外网。准备好了再取消注释。
+# [[gate.step]]
+# name = "govulncheck"
+# cwd = "."
+# timeout_seconds = 1800
+# argv = ["govulncheck", "./..."]
+
+[coverage]
+# 先跑一轮看实际数字，再把水位写进来。写了以后再调低要 adone policy --accept。
+# Go 这一步的百分比不是多包合计，见上面「单元测试」的注释。
+# threshold = 60
+source = "单元测试"
+
+[tests]
+adapter = "go"
+roots = ["cmd", "internal", "test"]
+threshold_docs = []
+
+[code]
+big_file_lines = 800
+big_file_globs = ["cmd/**/*.go", "internal/**/*.go"]
+mark_globs = ["cmd/**/*.go", "internal/**/*.go"]
+mark_words = ["TODO", "FIXME", "XXX", "HACK"]
+dup_min_lines = 8
+dup_roots = ["cmd", "internal"]
+zero_cover_ratio = 0.15
+
+# 定义了却没人引用。正则按项目改，对不上就先别开，开了会在 adone health 里报。
+# [[code.unused]]
+# name = "未注册 handler"
+# glob = "internal/api/*.go"
+# define = "^func \\(h \\*Handler\\) ([a-z]\\w*)\\("
+# use = "h\\.([a-z]\\w*)\\b"
+
+# [[consistency.pair]]
+# a = "internal/migrate/migrate.go"
+# b = "deploy/schema.sql"
+# extract = "sql_tables"
+
+[docs]
+required = ["README.md"]
+diagram_globs = []
+diagram_render_ext = ".svg"
+adr_dir = "docs/adr"
+hooks_file = ".cursor/hooks.json"
+
+# [[docs.excerpt]]
+# file = "docs/schema.sql"
+# extract = "sql_tables"
+# against = "internal/migrate/migrate.go"
+
+[requirements]
+source = ""
+tables_from = "deploy/schema.sql"
+routes_from = "internal"
+views_from = ""
+
+# 默认不跑。adone health --with-probes 才执行。服务得已经在跑。
+# [[probe]]
+# name = "下单不会超卖"
+# argv = ["go", "run", "./scripts/probe_oversell"]
+# pass_pattern = "PASS"
+# fail_pattern = "FAIL"

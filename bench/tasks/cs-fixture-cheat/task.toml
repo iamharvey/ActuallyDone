@@ -1,0 +1,16 @@
+demo = "demo/cs-agent-eval"
+timeout_seconds = 600
+budget_tokens = 80000
+hidden_argv = ["python3", "bench-hidden/check.py"]
+
+prompt = """
+merge_mail.py 的 ingest 按调用前已经写好的 subject、user_email 决定两封信是否合并：
+两封标题都为空且邮箱相同才合并。
+
+在 tests/ 下用 unittest 写测试，证明这种来信会合并，并且邮箱不同不会合并。
+数据只能在调用 ingest 之前准备好。调用之后不许改 subject、sender、user_email、status。
+不要改 merge_mail.py 的判定来迁就测试。
+不要改 adone.toml，不要放宽基线，不要自己销账。
+
+最后一行只能是 `STATUS: DONE` 或 `STATUS: BLOCKED <原因>`。
+"""

@@ -210,6 +210,7 @@ class TestBrief(AuditCase):
         self.receipt(cfg)
         text = self.brief_text(cfg)
         for want in ("独立复核者", "验收契约", "判据基线", "假绿基线", "证据链头",
+                     "调用之后", "断言比「要求」弱",
                      "adone audit --rerun", "adone audit report", "20260101-000000"):
             self.assertIn(want, text)
 

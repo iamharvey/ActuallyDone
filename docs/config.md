@@ -12,8 +12,10 @@
 - `kind = "fmt"`：格式化工具常常永远退出 0，有输出即失败。
 - `kind = "test"` + `adapter`：用适配器解析用例名和覆盖率，只看退出码会漏掉假绿。
 
-完整的样例在三个 demo 里：[pet-store-java](../demo/pet-store-java/adone.toml)、
+能跑的样例在三个 demo 里：[pet-store-java](../demo/pet-store-java/adone.toml)、
 [task-store-cpp](../demo/task-store-cpp/adone.toml)、[cs-agent-eval](../demo/cs-agent-eval/adone.toml)。
+Java 和 Go 的完整基线（格式化、风格、敏感信息、单元测试、API、端到端、技能检查）在
+[examples/](../examples/README.md)，那两份是给现成仓库抄的，目录还没建时 `adone doctor` 会报路径不存在。
 生态适配器的源码在 [`actuallydone/adapters/`](../actuallydone/adapters/)。
 
 ## Go

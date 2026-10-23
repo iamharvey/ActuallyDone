@@ -1,0 +1,59 @@
+# 范例：通用门禁只证明 tests/ 里的用例是绿的。
+# 第二步是本项目自己加的，专门看「调用之后有没有改条件字段」和「反例是否真的不合并」。
+
+version = 1
+
+[project]
+name = "merge-mail"
+ecosystems = ["python"]
+state_dir = ".adone"
+material_dir = "adone"
+skills_dir = ".cursor/skills"
+
+[gate]
+watch_roots = ["."]
+watch_exts = [".py"]
+min_tree_files = 1
+keep_receipts = 20
+
+[[gate.step]]
+name = "unittest"
+cwd = "."
+kind = "test"
+adapter = "python"
+argv = ["python3", "-m", "unittest", "discover", "-s", "tests", "-v"]
+
+[[gate.step]]
+name = "夹具老实"
+cwd = "."
+argv = ["python3", "scripts/check_honest.py"]
+
+[coverage]
+source = ""
+
+[tests]
+adapter = "python"
+roots = ["tests"]
+threshold_docs = []
+
+[code]
+big_file_lines = 800
+big_file_globs = []
+mark_globs = []
+mark_words = ["TODO", "FIXME", "XXX", "HACK"]
+dup_min_lines = 8
+dup_roots = []
+zero_cover_ratio = 0.15
+
+[docs]
+required = ["README.md"]
+diagram_globs = []
+diagram_render_ext = ".svg"
+adr_dir = ""
+hooks_file = ""
+
+[requirements]
+source = ""
+tables_from = ""
+routes_from = ""
+views_from = ""

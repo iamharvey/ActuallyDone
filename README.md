@@ -1,6 +1,6 @@
 # ActuallyDone - adone
 
-当前版本 **v1.6.1**，变更记录见 [CHANGELOG.md](CHANGELOG.md)。Python 3.11+，零第三方依赖。
+当前版本 **v1.7.0**，变更记录见 [CHANGELOG.md](CHANGELOG.md)。Python 3.11+，零第三方依赖。
 
 AI Agent 说「已完成，测试全部通过」时，你没法当场判断真假：它可能贴的是上一轮的日志，
 可能跑完测试又改了代码，也可能为了变绿把用例删了、断言去了、覆盖率下限调低了。
@@ -75,7 +75,7 @@ Agent 在合适的时候自动读它们：
 | --- | --- |
 | `completion-gate` | 「完成」只认新鲜的全绿回执；遇到别人留下的失败用例不停工也不去动它；调外部接口要真的发请求 |
 | `test-driven-dev` | 先写会失败的用例，再写实现，每步贴真实输出 |
-| `test-integrity` | 识别删用例、去断言、跳过、调低下限这类「把门禁改绿」的手法 |
+| `test-integrity` | 识别删用例、去断言、跳过、调低下限、事后改数据凑条件这类「把门禁改绿」的手法 |
 | `acceptance-contract` | 把需求逐条绑到用例名，门禁逐条核 |
 | `independent-check` | 复核者的做法：只报告，不修，不替人记账 |
 | `coding-standards` | 本项目的分层、命名、禁用 API |
@@ -125,6 +125,9 @@ adone/requirements/*.toml  # 需求台账，入库
 | [demo/pet-store-java](demo/pet-store-java/README.md) | Maven + JaCoCo，JUnit 5 按核数并行 |
 | [demo/task-store-cpp](demo/task-store-cpp/README.md) | CMake + CTest，不依赖 GoogleTest |
 | [demo/cs-agent-eval](demo/cs-agent-eval/README.md) | 内存客服，用场景金标做门禁 |
+| [demo/merge-mail](demo/merge-mail/README.md) | 项目自己加一步，挡住调用之后改数据凑条件 |
+
+Java 和 Go 的完整基线配置（不是能跑的项目）在 [examples/](examples/README.md)。
 
 ## 开发本仓库
 
