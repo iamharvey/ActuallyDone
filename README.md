@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="actuallydone-cover.png" alt="ActuallyDone：别只说完成，拿出证据。">
+</p>
+
 # ActuallyDone - adone
 
 当前版本 **v1.7.0**，变更记录见 [CHANGELOG.md](CHANGELOG.md)。Python 3.11+，零第三方依赖。
