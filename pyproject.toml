@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "actuallydone"
-version = "1.7.0"
+version = "1.8.0"
 description = "把「做完了」变成一件可以被复核的事：完成门禁、假绿检测与项目健康度报告"
 readme = "README.md"
 requires-python = ">=3.11"          # tomllib 进标准库是 3.11

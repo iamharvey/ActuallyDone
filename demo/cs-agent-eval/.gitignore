@@ -2,8 +2,6 @@
 !.adone/test-baseline.json
 !.adone/policy-baseline.json
 !.adone/chain.json
-!.adone/latest.json
-!.adone/receipts/
-!.adone/receipts/*.json
+!.adone/new-tests-waiver.json
 __pycache__/
 *.pyc

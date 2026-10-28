@@ -19,6 +19,7 @@ adone gate check           # 树哈希必须对上 latest.json；通过了是证
 adone gate check --explain # 附带每一步的判定依据
 adone gate slow            # 最近一轮最慢的用例 / 模块
 adone gate waive-tests "这次只改注释，没有新行为"   # 人来豁免，实现再变则失效
+adone gate repair-chain   # chain.json 或豁免记录冲突时，两边都留
 ```
 
 `adone.toml` 里的 `[[gate.step]]` **不用为开发期改**：全量命令仍是 `mvn test` / `go test ./...`。

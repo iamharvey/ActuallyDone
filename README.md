@@ -4,7 +4,7 @@
 
 # ActuallyDone - adone
 
-当前版本 **v1.7.0**，变更记录见 [CHANGELOG.md](CHANGELOG.md)。Python 3.11+，零第三方依赖。
+当前版本 **v1.8.0**，变更记录见 [CHANGELOG.md](CHANGELOG.md)。Python 3.11+，零第三方依赖。
 
 AI Agent 说「已完成，测试全部通过」时，你没法当场判断真假：它可能贴的是上一轮的日志，
 可能跑完测试又改了代码，也可能为了变绿把用例删了、断言去了、覆盖率下限调低了。
@@ -93,13 +93,27 @@ Agent 在合适的时候自动读它们：
 | 命令 | 做什么 | 详细 |
 | --- | --- | --- |
 | `init` / `detect` / `doctor` | 生成配置、增量探测新生态、核对配置 | [docs/config.md](docs/config.md) |
-| `gate run` / `check` / `slow` / `waive-tests` | 门禁、回执、慢用例、人工豁免 | [docs/gate.md](docs/gate.md) |
+| `gate run` / `check` / `repair-chain` / `waive-tests` | 门禁、回执、合并冲突、人工豁免 | [docs/gate.md](docs/gate.md) |
 | `integrity` / `policy` | 假绿基线、判据锁 | [docs/baselines.md](docs/baselines.md) |
 | `brief` / `audit` | 独立复核 | [docs/audit.md](docs/audit.md) |
 | `health` / `requirements` | 健康报告、需求台账 | [docs/health.md](docs/health.md) |
 | `install` / `clean` / `upgrade` | 装技能和钩子、拆除、升级 | [docs/install.md](docs/install.md)、[docs/ide.md](docs/ide.md) |
 
 每条命令都有 `--help`。遇到问题先跑 `adone doctor`，再看 [docs/faq.md](docs/faq.md)。
+
+## 多人一起改，怎么不冲突
+
+预防：
+
+- 回执、`latest.json`、`.cursor/hooks.json`、`.qoder/settings.json` 不入库。每人跑一次门禁或重装钩子都会整份改写，Windows 和 macOS 的钩子也不是同一份。
+- `.adone/chain.json` 和 `.adone/new-tests-waiver.json` 入库，但只追加、一行一条。`adone init` 和 `adone gate run` 会在 `.gitattributes` 写上 `merge=union`，合并时两边都留。这两行要进 master。
+- 技能可以入库。里面写「当前工作区」，不写本机绝对路径。
+
+已经冲突了：
+
+- `chain.json` 或豁免记录：跑 `adone gate repair-chain`，两边都留，并把 `.gitattributes` 一起提交。序号是各人自己数的，不要留大的那一边。
+- 两份基线：合完在合并结果上重新 `adone policy --accept` 或 `adone integrity --accept-baseline`。留任意一边当起点，对方放宽的部分会再被报出来。
+- 合并后的代码再跑一次 `adone gate run`。合并前的回执对不上这棵树。
 
 ## 项目里会多出什么
 
@@ -113,14 +127,28 @@ adone/requirements/*.toml  # 需求台账，入库
 .git/hooks/pre-commit      # 本机生成，不入库
 ```
 
-`.gitignore` 这样写，让两份基线和证据链头入库（**不要写 `.adone/`**，否则后面的 `!` 全部失效且不报错）：
+`.gitignore` 这样写，让两份基线和证据链入库（**不要写 `.adone/`**，否则后面的 `!` 全部失效且不报错）：
 
 ```gitignore
 .adone/*
 !.adone/test-baseline.json
 !.adone/policy-baseline.json
 !.adone/chain.json
+!.adone/new-tests-waiver.json
+
+.cursor/hooks.json
+.cursor/hooks/
+.qoder/settings.json
 ```
+
+`.gitattributes` 里要有（`adone init` 会写上）：
+
+```
+.adone/chain.json merge=union
+.adone/new-tests-waiver.json merge=union
+```
+
+怎么预防、已经冲突了怎么收，见上面一节。
 
 ## 演示项目
 

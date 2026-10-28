@@ -14,6 +14,11 @@ dist/
 !.adone/chain.json
 !.adone/new-tests-waiver.json
 
+# 钩子登记按本机生成。Windows 写 .exe，macOS / Linux 写 python3 -m，提交了就会冲突。
+.cursor/hooks.json
+.cursor/hooks/
+.qoder/settings.json
+
 # 评测台的运行产物。教训要人复制进 bench/lessons/，不从这里自动入库。
 bench/runs/
 # 本机的 Codex CLI，只给 python -m bench run 用，不入库。

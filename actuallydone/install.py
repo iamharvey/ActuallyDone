@@ -121,7 +121,6 @@ def variables(cfg: Config) -> dict[str, str]:
         "ADONE_CMD": json.dumps(shutil.which("adone") or "", ensure_ascii=False),
         # .cmd 启动器用未加引号的 Windows 路径；空串表示装的时候 PATH 里没有
         "ADONE_CMD_WIN": (shutil.which("adone") or "").replace("/", "\\"),
-        "REPO_PATH": str(cfg.root),
         "STATE_DIR": cfg.get("project.state_dir"),
         "MATERIAL_DIR": cfg.get("project.material_dir"),
         "SKILLS_DIR": cfg.get("project.skills_dir"),
@@ -148,17 +147,15 @@ def variables(cfg: Config) -> dict[str, str]:
     return v
 
 
-def _hooks_note(cfg: Config, cmd: str) -> str:
-    hooks = cfg.root / ".cursor" / "hooks.json"
-    if hooks.exists():
-        return (f"`stop` 只在本轮改了受监视文件时跑 `{cmd} gate run --changed`"
-                f"（相关用例，不写 latest.json；`loop_limit` 为 3）。"
-                f"问答、读代码、没改受监视文件时钩子不应出现。"
-                f"`git commit` 时 `beforeShellExecution` 先 `{cmd} gate check`，"
-                f"全量回执对不上就拒绝（`--no-verify` 也拦）；"
-                f"本机 `.git/hooks/pre-commit` 在回执不新鲜时跑 `{cmd} gate run --for-commit`。")
-    return (f"本项目还没装钩子。装上之后（`{cmd} install --with-hooks`），"
-            f"改了受监视文件后的 stop 只跑相关用例；提交时才跑全量门禁。")
+def _hooks_note(_cfg: Config, cmd: str) -> str:
+    # 不看本机有没有 hooks.json。技能经常入库，这段若随本机变，两人重渲就会冲突。
+    return (f"`stop` 只在本轮改了受监视文件时跑 `{cmd} gate run --changed`"
+            f"（相关用例，不写 latest.json；`loop_limit` 为 3）。"
+            f"问答、读代码、没改受监视文件时钩子不应出现。"
+            f"`git commit` 时 `beforeShellExecution` 先 `{cmd} gate check`，"
+            f"全量回执对不上就拒绝（`--no-verify` 也拦）；"
+            f"本机 `.git/hooks/pre-commit` 在回执不新鲜时跑 `{cmd} gate run --for-commit`。"
+            f"钩子按本机生成，不要提交 `.cursor/hooks.json` 和 `.qoder/settings.json`。")
 
 
 def render(text: str, v: dict[str, str]) -> str:
@@ -673,8 +670,9 @@ LEGACY_SCRIPTS = ("mark-dirty.sh",)
 def hook_python() -> str:
     """钩子里用哪个解释器。
 
-    不烧 sys.executable：hooks.json 是要提交进仓库的，
-    /opt/homebrew/opt/python@3.13/bin/python3.13 换台机器就是错的。
+    不烧 sys.executable：hooks.json 不要入库。
+    Windows 写 .exe，macOS / Linux 写 python3 -m，两份对不上。
+    /opt/homebrew/opt/python@3.13/bin/python3.13 换台机器也是错的。
     """
     if os.name == "nt":
         # py 是官方安装器带的启动器；Windows 商店那个 python 别名会打开应用商店

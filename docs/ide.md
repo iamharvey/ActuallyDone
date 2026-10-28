@@ -6,7 +6,7 @@
 本机 `.git/hooks/pre-commit` 两边共用：你在终端敲的 `git commit` 靠它。
 
 `--ide`：`auto`（默认）看不出 Qoder 就只装 Cursor；`cursor` / `qoder` 只动一边；`all` 两份都写。
-钩子登记是本机生成物（里面是这台机器的绝对路径），**不要入库**。
+钩子登记是本机生成物（Windows 写 `.exe`，macOS / Linux 写 `python3 -m`，Qoder 还会写入绝对路径），**不要入库**。
 
 ## Cursor
 

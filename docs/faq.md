@@ -56,6 +56,15 @@ v1.4.2 已修。重渲 `adone install --hooks-only --force` 后钩子里会带 `
 **`adone detect --write` 把阈值冲掉了？**
 新接入一门生态用 `adone detect --merge`，它不碰阈值。
 
+**合并代码时 `.adone/chain.json` 或 `new-tests-waiver.json` 冲突了？**
+这两份是各人追加一行。序号是各人自己数的。跑 `adone gate repair-chain`，两边都留，并把 `.gitattributes` 里的两行 `merge=union` 一并提交。见 [baselines.md](baselines.md)。
+
+**两份基线也冲突了？**
+只有两边都记账才会改这两个文件。合完在合并结果上重新 `adone policy --accept` 或 `adone integrity --accept-baseline`。留任意一边都可以当起点，对方放宽的部分会再被报出来。
+
+**`latest.json`、回执、`hooks.json` 要不要入库？**
+不要。回执每人跑一次就整份换掉。`hooks.json` 在 Windows 上是 `.exe`，在 macOS / Linux 上是 `python3 -m`，提交了必冲突。技能可以入库；里面不写本机绝对路径。
+
 **删了基线想让检查闭嘴？**
 上一份回执记着基线指纹，会被拦。要放宽就 `--accept` / `--accept-baseline` 写理由，见 [baselines.md](baselines.md)。
 

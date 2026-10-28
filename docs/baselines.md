@@ -26,6 +26,8 @@ adone policy --accept "把 go vet 并进 build 步骤，命令因此变了"
 - 删掉基线想让检查闭嘴不行：上一份回执记着基线指纹，会被拦住。
 - **放宽只能由人在终端里敲。** 装了钩子之后，Agent 在 IDE 里执行这三条会被拒绝；复核者也不许跑。
   直接改这几个 JSON 钩子管不到，但会出现在 diff 里。
-- 判据基线、假绿基线、证据链头（`chain.json`）建议入库：它们是证据，不是缓存。
+- 判据基线、假绿基线、证据链（`chain.json`）、豁免记录建议入库：它们是证据，不是缓存。`latest.json` 和 `receipts/` 不入库，每人跑门禁都会整份改写。
+- 链和豁免记录是一行一条、只追加。`.gitattributes` 里写 `.adone/chain.json merge=union` 和 `.adone/new-tests-waiver.json merge=union`。已经冲突就跑 `adone gate repair-chain`，两边都留。
+- 两份基线只在人记账时整份重写。两边都记过，合完重新记账。留任意一边之后，对方放宽的部分会再次被报出来。
 
 源码：[`actuallydone/integrity.py`](../actuallydone/integrity.py)、[`actuallydone/policy.py`](../actuallydone/policy.py)。

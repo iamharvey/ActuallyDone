@@ -252,8 +252,9 @@ def write_baseline(cfg: Config, snap: dict, reason: str) -> dict:
         "snapshot": snap,
     }
     cfg.policy_baseline.parent.mkdir(parents=True, exist_ok=True)
-    cfg.policy_baseline.write_text(json.dumps(data, ensure_ascii=False, indent=2),
-                                   encoding="utf-8")
+    cfg.policy_baseline.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8")
     return data
 
 

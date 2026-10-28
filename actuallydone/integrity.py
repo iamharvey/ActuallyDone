@@ -139,8 +139,9 @@ def write_baseline(cfg: Config, cur: dict, reason: str) -> None:
         "runtime_skips": current_runtime_skips(cfg),
         **cur,
     }
-    cfg.baseline.write_text(json.dumps(data, ensure_ascii=False, indent=2),
-                            encoding="utf-8")
+    cfg.baseline.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8")
 
 
 def integrity_problems(cfg: Config, receipt: dict | None) -> list[str]:

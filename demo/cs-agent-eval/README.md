@@ -30,4 +30,4 @@ adone policy
 ```
 
 门禁步骤是手写的 `adapter = "eval"`。契约用 `scenario =` 绑场景名，不走 `test =`。
-`.adone/` 入库判据 / 假绿基线 / 链头，外加第一份全绿回执；不要把后续 `receipts/` 越堆越多。
+`.adone/` 入库判据基线、假绿基线和证据链。回执和 `latest.json` 不入库：每人跑一次门禁都会改写它们。

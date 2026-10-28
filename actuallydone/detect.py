@@ -516,6 +516,10 @@ def cmd_init(args) -> int:
 
     path.write_text(render_config(got), encoding="utf-8")
     (root / ".adone").mkdir(exist_ok=True)
+    from .config import Config
+    from .gate import ensure_chain_merge
+    if ensure_chain_merge(Config.load(root)):
+        print("  已写 .gitattributes：证据链和豁免记录合并时两边都留")
     print(f"\n已写入 {path.relative_to(root)}。接下来：")
     print("  1. 逐条核对带「请确认」的项，特别是 min_tree_files 与 coverage.threshold")
     print("  2. adone doctor         拿配置对现实核一遍")

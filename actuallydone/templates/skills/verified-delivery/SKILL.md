@@ -37,7 +37,7 @@ implement 与 test 用两个 Subagent，test 段的提示词里**不放实现思
 ### implement
 
 ```
-仓库：{{REPO_PATH}}
+仓库：当前工作区（{{PROJECT}}）
 任务：<一句话说清要实现什么>
 验收契约：{{ACCEPTANCE_DIR}}/<任务>.toml，逐条必须满足（不要自行增删条目）
 
@@ -59,7 +59,7 @@ implement 与 test 用两个 Subagent，test 段的提示词里**不放实现思
 ### test
 
 ```
-仓库：{{REPO_PATH}}
+仓库：当前工作区（{{PROJECT}}）
 被改文件：<路径清单>
 验收契约：{{ACCEPTANCE_DIR}}/<任务>.toml，每条 item 的 test 字段就是你要写的用例名
 
@@ -82,7 +82,7 @@ implement 与 test 用两个 Subagent，test 段的提示词里**不放实现思
 ### review
 
 ```
-仓库：{{REPO_PATH}}
+仓库：当前工作区（{{PROJECT}}）
 评审范围：<文件清单>
 必读：{{SKILLS_DIR}}/pr-review-checklist/SKILL.md 及其 references/
 
@@ -111,7 +111,7 @@ implement 与 test 用两个 Subagent，test 段的提示词里**不放实现思
 
 ## audit 段：换个人来查
 
-verify 是实现者自己跑的，证明的是「证据自洽」，不是「没人做手脚」。最后开一个新会话（换模型更好），只给一句 `按 independent-check 独立复核这个仓库的交付：{{REPO_PATH}}`，不给实现过程；未通过原样交回问题清单，修完由复核者再核一次，不接受实现者自证已修好。
+verify 是实现者自己跑的，证明的是「证据自洽」，不是「没人做手脚」。最后开一个新会话（换模型更好），只给一句 `按 independent-check 独立复核这个仓库的交付：当前工作区（{{PROJECT}}）`，不给实现过程；未通过原样交回问题清单，修完由复核者再核一次，不接受实现者自证已修好。
 
 ## 深入
 

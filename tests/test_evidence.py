@@ -303,6 +303,50 @@ class TestReceiptChain(ChainCase):
     def test_没有回执时不该在这里报错(self):
         self.assertEqual(gate.chain_problems(self.config(), None), ([], []))
 
+    def test_两条分支的链都算尖_换回更早一环不行(self):
+        cfg = self.config()
+        first = self.receipt(id="20260101-000000")
+        self.put(cfg, first)
+        second = self.receipt(id="20260102-000000", seq=2, prev=first["self_hash"])
+        self.put(cfg, second)
+        other = self.receipt(id="20260103-000000", seq=8, prev=None,
+                             created_at="2026-10-14T14:12:33")
+        gate.write_chain_head(cfg, other)
+        problems, _ = gate.chain_problems(cfg, second)
+        self.assertEqual(problems, [])
+        problems, _ = gate.chain_problems(cfg, other)
+        self.assertEqual(problems, [])
+        problems, _ = gate.chain_problems(cfg, first)
+        self.assertTrue(any("更早的一环" in p for p in problems))
+
+    def test_冲突标记收成两边都留的链(self):
+        cfg = self.config()
+        left = self.receipt(id="20261015-110402", seq=9, created_at="2026-10-15T11:04:07")
+        right = self.receipt(id="20261014-141233", seq=17, created_at="2026-10-14T14:12:33")
+        cfg.state_dir.mkdir(parents=True, exist_ok=True)
+        def body(rec: dict, seq: int) -> str:
+            return json.dumps({
+                "head": rec["self_hash"], "seq": seq,
+                "receipt_id": rec["id"], "updated_at": rec["created_at"],
+            }, ensure_ascii=False, indent=2)
+        left_body = "\n".join(body(left, 9).splitlines()[1:-1])
+        right_body = "\n".join(body(right, 17).splitlines()[1:-1])
+        cfg.chain.write_text(
+            "{\n"
+            "<<<<<<< HEAD\n"
+            + left_body + "\n"
+            "=======\n"
+            + right_body + "\n"
+            ">>>>>>> master\n"
+            "}\n",
+            encoding="utf-8")
+        self.assertEqual(gate.repair_chain(cfg), 0)
+        text = cfg.chain.read_text(encoding="utf-8")
+        self.assertNotIn("<<<<<<<", text)
+        heads = {json.loads(line)["receipt_id"] for line in text.splitlines() if line.strip()}
+        self.assertEqual(heads, {left["id"], right["id"]})
+        self.assertIn("merge=union", (cfg.root / ".gitattributes").read_text(encoding="utf-8"))
+
 
 class TestCheckSurvivesBrokenTree(ChainCase):
     def test_树哈希算不出来时给人话而不是堆栈并且继续核判据(self):

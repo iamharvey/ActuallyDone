@@ -104,6 +104,45 @@ class TestNewTestsGate(ProjectCase):
         got = gate.collect_check(cfg)
         self.assertTrue(any("测试文件没有变" in p for p in got["problems"]), got["problems"])
 
+    def test_两条豁免只追加_旧文件和冲突都能收成两行(self):
+        cfg = self.cfg()
+        path = gate.new_tests_waiver_path(cfg)
+        cfg.state_dir.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({
+            "impl_hash": "oldhasholdhash",
+            "reason": "以前记的豁免",
+            "at": "2026-10-01T00:00:00",
+        }, indent=2), encoding="utf-8")
+        self.assertEqual(gate.waive_new_tests(cfg, "这次只改注释，没有新行为"), 0)
+        lines = [json.loads(ln) for ln in path.read_text(encoding="utf-8").splitlines()
+                 if ln.strip()]
+        self.assertEqual([ln["impl_hash"] for ln in lines][0], "oldhasholdhash")
+        self.assertEqual(len(lines), 2)
+        first_line = path.read_text(encoding="utf-8").splitlines()[0]
+
+        self.write("internal/calc.go",
+                   "package internal\nfunc Add(a, b int) int { return a + b + 9 }\n")
+        self.assertEqual(gate.waive_new_tests(cfg, "这次只改日志，没有新行为"), 0)
+        text = path.read_text(encoding="utf-8")
+        self.assertTrue(text.startswith(first_line), text)
+        self.assertEqual(len([ln for ln in text.splitlines() if ln.strip()]), 3)
+        attrs = (cfg.root / ".gitattributes").read_text(encoding="utf-8")
+        self.assertIn(".adone/new-tests-waiver.json merge=union", attrs)
+        self.assertIn(".adone/chain.json merge=union", attrs)
+
+        path.write_text(
+            "{\n<<<<<<< HEAD\n"
+            '  "impl_hash": "aaa",\n  "reason": "只改了注释",\n  "at": "2026-10-15T11:04:07"\n'
+            "=======\n"
+            '  "impl_hash": "bbb",\n  "reason": "只改了日志",\n  "at": "2026-10-14T14:12:33"\n'
+            ">>>>>>> master\n}\n",
+            encoding="utf-8")
+        note = gate._repair_waiver(cfg)
+        self.assertIn("2 条", note)
+        kept = {json.loads(ln)["impl_hash"]
+                for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()}
+        self.assertEqual(kept, {"aaa", "bbb"})
+
     def test_理由太短不写豁免(self):
         cfg = self.cfg()
         buf = io.StringIO()

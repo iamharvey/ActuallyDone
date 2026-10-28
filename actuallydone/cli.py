@@ -66,6 +66,11 @@ def cmd_gate_check(args) -> int:
                       spotcheck=args.spotcheck or 0)
 
 
+def cmd_gate_repair_chain(args) -> int:
+    from .gate import repair_chain
+    return repair_chain(_cfg(args))
+
+
 def cmd_gate_hash(args) -> int:
     from .gate import tree_hash
     cfg = _cfg(args)
@@ -204,6 +209,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     g = gsub.add_parser("verify-contract", help="只校验验收契约")
     g.set_defaults(func=cmd_gate_contract)
+
+    g = gsub.add_parser("repair-chain",
+                        help="合并冲突的 chain.json：两边的环都留，并写上 git 的 union 合并")
+    g.set_defaults(func=cmd_gate_repair_chain)
 
     g = gsub.add_parser("waive-tests",
                         help="人来豁免这一次「实现变了但测试没变」，绑在当前实现哈希上")
