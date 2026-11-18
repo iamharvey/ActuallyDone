@@ -663,6 +663,11 @@ def run_gate(cfg: Config, skip: list[str] | None = None,
         for p in problems:
             print(f"  - {p}", file=sys.stderr)
         return 2
+    unmerged = unmerged_files(cfg)
+    if unmerged:
+        print(f"{'、'.join(unmerged)} 还有合并冲突，门禁不跑。"
+              "先跑 adone gate repair-chain，两边都留。", file=sys.stderr)
+        return 2
 
     now_units = unit_hashes(cfg)
     source = None
@@ -749,7 +754,8 @@ def run_gate(cfg: Config, skip: list[str] | None = None,
     path = cfg.receipts_dir / f"receipt-{receipt['id']}.json"
     path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2), encoding="utf-8")
     shutil.copyfile(path, cfg.latest_receipt)
-    write_chain_head(cfg, receipt)
+    if not write_chain_head(cfg, receipt):
+        return 2
     cfg.dirty.unlink(missing_ok=True)
     prune_receipts(cfg)
 
@@ -893,6 +899,10 @@ def waive_new_tests(cfg: Config, reason: str) -> int:
         "at": datetime.now().isoformat(timespec="seconds"),
     }
     text = _waiver_text(cfg)
+    if _conflicted(text):
+        print("new-tests-waiver.json 有合并冲突，没有记豁免，文件原样留着。"
+              "先跑 adone gate repair-chain。", file=sys.stderr)
+        return 2
     records = load_waiver_records(cfg)
     already = any(rec.get("impl_hash") == record["impl_hash"] for rec in records)
     cfg.state_dir.mkdir(parents=True, exist_ok=True)
@@ -903,10 +913,13 @@ def waive_new_tests(cfg: Config, reason: str) -> int:
         with path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
     else:
+        old = _recover(text, "impl_hash")
+        if old is None:
+            print("new-tests-waiver.json 读不出来，没有记豁免，文件原样留着。", file=sys.stderr)
+            return 2
         if not already:
-            records.append(record)
-        path.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in records),
-                        encoding="utf-8")
+            old.append(record)
+        _write_waivers(cfg, old)
     if ensure_chain_merge(cfg):
         print("已把 merge=union 写进 .gitattributes"
               "（chain.json 与 new-tests-waiver.json）。这个文件要入库。")
@@ -1024,7 +1037,7 @@ _UNION_RULES = (
     ".adone/chain.json merge=union",
     ".adone/new-tests-waiver.json merge=union",
 )
-_CONFLICT_MARK = ("<<<<<<<", "=======", ">>>>>>>")
+_CONFLICT_MARK = ("<<<<<<<", "|||||||", "=======", ">>>>>>>")
 
 
 def _conflicted(text: str) -> bool:
@@ -1041,30 +1054,44 @@ def _chain_text_conflicted(cfg: Config) -> bool:
 
 
 def _sides(text: str) -> list[str]:
-    """一个冲突区拆成两边。公共的行（花括号）分别拼回每一边。"""
+    """冲突拆成两边：公共行两边都拼上，几个冲突块按顺序拼，diff3 的共同祖先那段丢掉。"""
     if not _conflicted(text):
         return [text]
-    pre: list[str] = []
     ours: list[str] = []
     theirs: list[str] = []
-    after: list[str] = []
-    mode = "pre"
+    mode = "both"
     for line in text.splitlines(keepends=True):
         if line.startswith("<<<<<<<"):
             mode = "ours"
-        elif line.startswith("=======") and mode == "ours":
+        elif line.startswith("|||||||") and mode == "ours":
+            mode = "base"
+        elif line.startswith("=======") and mode in ("ours", "base"):
             mode = "theirs"
-        elif line.startswith(">>>>>>>"):
-            mode = "after"
-        elif mode == "pre":
-            pre.append(line)
-        elif mode == "ours":
-            ours.append(line)
-        elif mode == "theirs":
-            theirs.append(line)
+        elif line.startswith(">>>>>>>") and mode == "theirs":
+            mode = "both"
         else:
-            after.append(line)
-    return ["".join(pre + ours + after), "".join(pre + theirs + after)]
+            if mode in ("both", "ours"):
+                ours.append(line)
+            if mode in ("both", "theirs"):
+                theirs.append(line)
+    return ["".join(ours), "".join(theirs)]
+
+
+def _recover(text: str, key: str) -> list[dict] | None:
+    """每一边都至少读出一条才算收得回来；读不全返回 None，文件就别动。"""
+    sides = [_objects_in_plain(side, key) for side in _sides(text)]
+    if not all(sides):
+        return None
+    return _dedupe_by([rec for side in sides for rec in side], key)
+
+
+def unmerged_files(cfg: Config) -> list[str]:
+    names = []
+    if _chain_text_conflicted(cfg):
+        names.append("chain.json")
+    if _conflicted(_waiver_text(cfg)):
+        names.append("new-tests-waiver.json")
+    return names
 
 
 def _objects_in_plain(text: str, key: str) -> list[dict]:
@@ -1198,7 +1225,8 @@ def ensure_chain_merge(cfg: Config) -> bool:
     return True
 
 
-def write_chain_head(cfg: Config, receipt: dict) -> None:
+def write_chain_head(cfg: Config, receipt: dict) -> bool:
+    """接上一环。chain.json 有冲突或读不全时一个字节都不动，返回 False。"""
     record = _chain_line(receipt)
     text = cfg.chain.read_text(encoding="utf-8") if cfg.chain.exists() else ""
     if _clean_jsonl(text):
@@ -1208,7 +1236,11 @@ def write_chain_head(cfg: Config, receipt: dict) -> None:
             with cfg.chain.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
     else:
-        records = load_chain_records(cfg)
+        records = None if _conflicted(text) else _recover(text, "head")
+        if records is None:
+            print("chain.json 有合并冲突或读不出来，这一环没写进去，文件原样留着。"
+                  "先跑 adone gate repair-chain，再重跑门禁。", file=sys.stderr)
+            return False
         if record["head"] not in {r.get("head") for r in records}:
             records.append(record)
         _write_chain(cfg, records)
@@ -1216,47 +1248,54 @@ def write_chain_head(cfg: Config, receipt: dict) -> None:
         print("已把 merge=union 写进 .gitattributes"
               "（chain.json 与 new-tests-waiver.json）。"
               "这个文件要入库，之后各人追加才不会在这两份上冲突。")
+    return True
+
+
+def _write_waivers(cfg: Config, records: list[dict]) -> None:
+    new_tests_waiver_path(cfg).write_text(
+        "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in records), encoding="utf-8")
 
 
 def repair_chain(cfg: Config) -> int:
-    """把冲突标记收成一行一环，两边都留，并写上 union 合并。"""
-    if not cfg.chain.exists():
+    """把证据链和豁免记录的冲突收成一行一条，两边都留。有一边读不全就两份都不动。"""
+    chain_text = cfg.chain.read_text(encoding="utf-8") if cfg.chain.exists() else ""
+    waiver_text = _waiver_text(cfg)
+    fix_chain = cfg.chain.exists() and not _clean_jsonl(chain_text)
+    fix_waiver = (new_tests_waiver_path(cfg).is_file()
+                  and not _clean_jsonl(waiver_text, "impl_hash"))
+    if not cfg.chain.exists() and not fix_waiver:
         print("还没有 chain.json", file=sys.stderr)
         return 2
-    text = cfg.chain.read_text(encoding="utf-8")
-    records = _objects_in(text)
-    if not records:
-        print("chain.json 里读不出任何一环。冲突标记两边都要是完整的 JSON。",
+    failed = []
+    chain = waivers = None
+    if fix_chain:
+        chain = _recover(chain_text, "head")
+        if chain is None:
+            failed.append("chain.json：冲突里有一边读不出完整的环。")
+    if fix_waiver:
+        waivers = _recover(waiver_text, "impl_hash")
+        if waivers is None:
+            failed.append("new-tests-waiver.json：冲突里有一边读不出完整的豁免。")
+    if failed:
+        for line in failed:
+            print(line, file=sys.stderr)
+        print("两份文件都没动。把冲突两边各自改回完整的 JSON（别删任何一边），再跑一次。",
               file=sys.stderr)
         return 1
-    _write_chain(cfg, records)
-    waiver_note = _repair_waiver(cfg)
-    added = ensure_chain_merge(cfg)
-    print(f"证据链收成 {len(records)} 环，两边都留着。")
-    if waiver_note:
-        print(waiver_note)
-    if added:
+    if chain is not None:
+        _write_chain(cfg, chain)
+        print(f"证据链收成 {len(chain)} 环，两边都留着。")
+    elif cfg.chain.exists():
+        print("证据链没有冲突。")
+    if waivers is not None:
+        _write_waivers(cfg, waivers)
+        print(f"豁免记录收成 {len(waivers)} 条，两边都留着。")
+    if ensure_chain_merge(cfg):
         print("已在 .gitattributes 写上 chain.json 与 new-tests-waiver.json 的 merge=union。"
               "这个文件要入库。")
     else:
         print(".gitattributes 里已经有 merge=union。")
     return 0
-
-
-def _repair_waiver(cfg: Config) -> str:
-    """冲突或旧的整份 JSON 收成一行一条。没有这个文件就什么都不做。"""
-    path = new_tests_waiver_path(cfg)
-    if not path.is_file():
-        return ""
-    text = _waiver_text(cfg)
-    if _clean_jsonl(text, "impl_hash"):
-        return ""
-    records = load_waiver_records(cfg)
-    if not records:
-        return "new-tests-waiver.json 里读不出豁免。冲突两边都要是完整的 JSON。"
-    path.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in records),
-                    encoding="utf-8")
-    return f"豁免记录收成 {len(records)} 条，两边都留着。"
 
 
 def chain_problems(cfg: Config, receipt: dict | None) -> tuple[list[str], list[str]]:

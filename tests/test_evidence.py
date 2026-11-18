@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 from argparse import Namespace
 
@@ -346,6 +348,46 @@ class TestReceiptChain(ChainCase):
         heads = {json.loads(line)["receipt_id"] for line in text.splitlines() if line.strip()}
         self.assertEqual(heads, {left["id"], right["id"]})
         self.assertIn("merge=union", (cfg.root / ".gitattributes").read_text(encoding="utf-8"))
+
+    def _conflict_kept_both(self, text: str, want: set[str]) -> None:
+        cfg = self.config()
+        cfg.state_dir.mkdir(parents=True, exist_ok=True)
+        cfg.chain.write_text(text, encoding="utf-8")
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(gate.repair_chain(cfg), 0)
+        kept = {json.loads(line)["receipt_id"]
+                for line in cfg.chain.read_text(encoding="utf-8").splitlines() if line.strip()}
+        self.assertEqual(kept, want)
+
+    def test_两边序号相同拆成两个冲突块_两边都留(self):
+        left, right = self.receipt(id="L", seq=9), self.receipt(id="R", seq=9)
+        self._conflict_kept_both(
+            "{\n<<<<<<< HEAD\n"
+            f'  "head": "{left["self_hash"]}",\n'
+            "=======\n"
+            f'  "head": "{right["self_hash"]}",\n'
+            ">>>>>>> master\n"
+            '  "seq": 9,\n'
+            '<<<<<<< HEAD\n  "receipt_id": "L"\n=======\n  "receipt_id": "R"\n>>>>>>> master\n'
+            "}\n", {"L", "R"})
+
+    def test_diff3冲突的共同祖先不算任何一边(self):
+        rows = {k: json.dumps({"head": self.receipt(id=k)["self_hash"], "receipt_id": k})
+                for k in ("L", "BASE", "R")}
+        self._conflict_kept_both(
+            f"<<<<<<< HEAD\n{rows['L']}\n||||||| base\n{rows['BASE']}\n"
+            f"=======\n{rows['R']}\n>>>>>>> master\n", {"L", "R"})
+
+    def test_冲突一边读不出来就不写链也不修(self):
+        cfg = self.config()
+        cfg.state_dir.mkdir(parents=True, exist_ok=True)
+        text = ('<<<<<<< HEAD\n{"head": "aaa", "receipt_id": "L"}\n'
+                "=======\n  \"head\": \"bbb\n>>>>>>> master\n")
+        cfg.chain.write_text(text, encoding="utf-8")
+        with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+            self.assertFalse(gate.write_chain_head(cfg, self.receipt(id="NEW")))
+            self.assertEqual(gate.repair_chain(cfg), 1)
+        self.assertEqual(cfg.chain.read_text(encoding="utf-8"), text)
 
 
 class TestCheckSurvivesBrokenTree(ChainCase):

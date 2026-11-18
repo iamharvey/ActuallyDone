@@ -137,11 +137,32 @@ class TestNewTestsGate(ProjectCase):
             '  "impl_hash": "bbb",\n  "reason": "只改了日志",\n  "at": "2026-10-14T14:12:33"\n'
             ">>>>>>> master\n}\n",
             encoding="utf-8")
-        note = gate._repair_waiver(cfg)
-        self.assertIn("2 条", note)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self.assertEqual(gate.repair_chain(cfg), 0)
+        self.assertIn("2 条", buf.getvalue())
         kept = {json.loads(ln)["impl_hash"]
                 for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()}
         self.assertEqual(kept, {"aaa", "bbb"})
+
+    def test_有冲突就不跑门禁也不记豁免_文件一个字节不动(self):
+        cfg = self.cfg()
+        self._run(cfg)
+        chain_before = cfg.chain.read_bytes()
+        path = gate.new_tests_waiver_path(cfg)
+        conflicted = ("<<<<<<< HEAD\n"
+                      '{"impl_hash": "aaa", "reason": "只改了注释"}\n'
+                      "=======\n"
+                      ">>>>>>> master\n")
+        path.write_text(conflicted, encoding="utf-8")
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(gate.run_gate(cfg), 2)
+            self.assertEqual(gate.waive_new_tests(cfg, "这次只改注释，没有新行为"), 2)
+            self.assertEqual(gate.repair_chain(cfg), 1)
+        self.assertIn("new-tests-waiver.json 还有合并冲突", err.getvalue())
+        self.assertEqual(path.read_text(encoding="utf-8"), conflicted)
+        self.assertEqual(cfg.chain.read_bytes(), chain_before)
 
     def test_理由太短不写豁免(self):
         cfg = self.cfg()

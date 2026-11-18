@@ -25,6 +25,9 @@ adone gate repair-chain   # chain.json 或豁免记录冲突时，两边都留
 `adone.toml` 里的 `[[gate.step]]` **不用为开发期改**：全量命令仍是 `mvn test` / `go test ./...`。
 相关用例由适配器另组一条临时命令；把全量 `argv` 改成只跑一条会被判据锁判成放松。
 
+`chain.json` 或豁免记录里还有冲突标记时，`gate run` 不跑、`waive-tests` 不记，先 `repair-chain`。
+`repair-chain` 要冲突两边各读出至少一条才写；有一边读不出来就两份都不动并退出 1，这时手工把那一边改回完整的 JSON。
+
 `gate check` 通过时的那句话是「把回执交给另一个模型」，不是「可以完成了」。
 接着换一个模型跑 `adone audit --reviewer <模型名>`，见 [audit.md](audit.md)。
 

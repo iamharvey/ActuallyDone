@@ -2,6 +2,12 @@
 
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## v1.8.1 — 2026-11-18
+
+- 修：`chain.json` 的冲突拆成两块（两边序号相同时就会这样），或本机用了 diff3 冲突样式时，`gate run` 和 `repair-chain` 会读丢一边甚至两边的环，门禁照样全绿。现在多个冲突块按顺序拼，diff3 的共同祖先那段丢掉。
+- `chain.json` 或豁免记录还有冲突时，`gate run` 不跑、`waive-tests` 不记，都退出 2，文件一个字节不动。
+- `repair-chain` 要求冲突两边各读出至少一条，读不全就两份都不动并退出 1。只有豁免记录冲突时也能修。
+
 ## v1.8.0 — 2026-10-28
 
 `.adone/chain.json` 和 `.adone/new-tests-waiver.json` 改成一行一条、只追加。`.gitattributes` 的 `merge=union` 让两边都留。已经冲突的用 `adone gate repair-chain` 收。
