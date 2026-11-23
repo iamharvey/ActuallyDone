@@ -16,6 +16,8 @@ PASS_RE = re.compile(r"^\s*--- PASS: (\S+)", re.M)
 FAIL_RE = re.compile(r"^\s*--- FAIL: (\S+)", re.M)
 SKIP_RE = re.compile(r"^\s*--- SKIP: (\S+)", re.M)
 COVER_RE = re.compile(r"coverage: ([\d.]+)% of statements")
+# go tool cover -func 的汇总行。各包自己的 coverage: 不能相加，只有这一行是语句加权总数。
+TOTAL_RE = re.compile(r"^total:.*\(statements\)\s+([\d.]+)%", re.M)
 TESTFUNC_RE = re.compile(r"^func (Test\w+)\(", re.M)
 FUNC_START = re.compile(r"^func\b")
 ASSERT_WORDS = ("t.Error", "t.Fatal", "t.Errorf", "t.Fatalf", "require.", "assert.",
@@ -35,6 +37,14 @@ def func_name(decl: str) -> str:
                 rest = rest[i + 1:].lstrip()
                 break
     return rest.split("(")[0].strip() or "?"
+
+
+def total_percent(text: str) -> float | None:
+    """从 go tool cover -func 的输出里取 total 行。没有就返回 None。"""
+    found = TOTAL_RE.findall(text or "")
+    if not found:
+        return None
+    return float(found[-1])
 
 
 class GoAdapter(Adapter):
@@ -71,7 +81,8 @@ class GoAdapter(Adapter):
             passed=len(passed), failed=len(failed), skipped=len(skipped),
             skip_top=len({n for n in skipped if "/" not in n}),
             passed_names=passed, failed_names=failed, skipped_names=skipped,
-            coverage=float(cov[-1]) if cov else None,
+            # 每个包一行。两行及以上时最后一行不是总覆盖率，留空，改从 cover.out 读。
+            coverage=float(cov[0]) if len(cov) == 1 else None,
         )
 
     def test_files(self, roots: list[Path]) -> list[Path]:
@@ -149,6 +160,41 @@ class GoAdapter(Adapter):
         zero = sum(1 for r in rows if r and r[-1] == "0.0%" and r[0] != "total:")
         total = sum(1 for r in rows if r and r[0] != "total:")
         return (zero, total) if total else None
+
+    def coverage_from_reports(self, *roots: Path) -> float | None:
+        """多包时 stdout 各写各的百分比。总覆盖率在 .adone/cover.out 的 total 行。"""
+        for root in roots:
+            if not isinstance(root, Path) or not root.is_dir():
+                continue
+            profile = root / ".adone" / "cover.out"
+            if not profile.is_file():
+                continue
+            got = self._cover_total(profile, root)
+            if got is not None:
+                return got
+        return None
+
+    def _cover_total(self, profile: Path, cwd: Path) -> float | None:
+        from ..gate import launch_argv, resolve_cmd
+        exe = resolve_cmd("go", cwd)
+        if not exe:
+            return None
+        try:
+            proc = subprocess.run(
+                launch_argv(exe, ["tool", "cover", f"-func={profile}"]),
+                cwd=cwd, capture_output=True, text=True, errors="replace")
+        except OSError:
+            return None
+        if proc.returncode != 0:
+            return None
+        return total_percent(proc.stdout)
+
+    def coverage_diagnosis(self, *roots: Path, output: str = "") -> str:
+        n = len(COVER_RE.findall(output or ""))
+        if n > 1:
+            return ("go test 每个包打一行 coverage，不能把其中一行当总覆盖率。"
+                    "测试命令要带 -coverprofile={cover_out}，总覆盖率从 cover.out 读。")
+        return "go test 的输出里没有覆盖率。加上 -coverprofile={cover_out}。"
 
     def routes(self, target: Path) -> set[str] | None:
         files = sorted(target.rglob("*.go")) if target.is_dir() else [target]

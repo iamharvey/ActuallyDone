@@ -391,7 +391,21 @@ class TestIntegrity(ProjectCase):
     def test_没有基线时不放行(self):
         self.make_go_project()
         cfg = self.config()
-        self.assertTrue(integrity.integrity_problems(cfg, None))
+        problems = integrity.integrity_problems(cfg, None)
+        self.assertTrue(any("建立初始基线" in p for p in problems))
+
+    def test_坏基线不当成没有基线(self):
+        self.make_go_project()
+        cfg = self.config()
+        cfg.state_dir.mkdir(parents=True, exist_ok=True)
+        cfg.baseline.write_text("{", encoding="utf-8")
+        problems = integrity.integrity_problems(cfg, None)
+        self.assertTrue(any("读不成" in p for p in problems))
+        self.assertFalse(any("建立初始基线" in p for p in problems))
+        cfg.baseline.write_text('{"reason": "不是基线"}\n', encoding="utf-8")
+        problems = integrity.integrity_problems(cfg, None)
+        self.assertTrue(any("不像一份基线" in p for p in problems))
+        self.assertFalse(any("建立初始基线" in p for p in problems))
 
     def test_扫不到用例时报错而不是判无松动(self):
         cfg = self.config(tests={"adapter": "go", "roots": ["不存在"]})

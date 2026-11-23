@@ -83,29 +83,40 @@ def declared_thresholds(cfg: Config) -> dict[str, float]:
     return out
 
 
+class BaselineBroken(Exception):
+    """基线文件在，但读不成。
+
+    与「还没建立」必须分开。读不成按没有处理的话，把基线改成一段乱码再按提示
+    重建，删掉的用例就不再算消失。
+    """
+
+
 def load_baseline(cfg: Config) -> dict | None:
     if not cfg.baseline.exists():
         return None
     try:
-        return json.loads(cfg.baseline.read_text(encoding="utf-8"))
-    except Exception:
-        return None
+        data = json.loads(cfg.baseline.read_text(encoding="utf-8"))
+    except Exception as e:
+        raise BaselineBroken(f"{cfg.baseline.name} 读不成：{e}") from e
+    if not isinstance(data, dict) or not isinstance(data.get("test_functions"), dict):
+        raise BaselineBroken(f"{cfg.baseline.name} 里没有用例清单，不像一份基线")
+    return data
 
 
 def compare(cfg: Config, cur: dict, base: dict) -> list[str]:
     problems: list[str] = []
 
-    gone = sorted(set(base["test_functions"]) - set(cur["test_functions"]))
+    gone = sorted(set(base.get("test_functions") or {}) - set(cur["test_functions"]))
     if gone:
         shown = "、".join(gone[:6]) + ("…" if len(gone) > 6 else "")
         problems.append(f"{len(gone)} 个用例消失了（删除或改名）：{shown}")
 
     for rel, n in sorted(cur["skip_sites"].items()):
-        was = base["skip_sites"].get(rel, 0)
+        was = (base.get("skip_sites") or {}).get(rel, 0)
         if n > was:
             problems.append(f"{rel} 的跳过标记从 {was} 处涨到 {n} 处，新增的跳过要有理由")
 
-    new_dumb = sorted(set(cur["assertionless"]) - set(base["assertionless"]))
+    new_dumb = sorted(set(cur["assertionless"]) - set(base.get("assertionless") or []))
     if new_dumb:
         shown = "、".join(new_dumb[:6]) + ("…" if len(new_dumb) > 6 else "")
         problems.append(f"{len(new_dumb)} 个用例没有任何断言，跑了也证明不了什么：{shown}")
@@ -154,7 +165,11 @@ def integrity_problems(cfg: Config, receipt: dict | None) -> list[str]:
     cur = scan(cfg)
     if not cur["test_functions"]:
         return ["假绿检测一个用例都没扫到：tests.roots 配错了，检测等于没做"]
-    base = load_baseline(cfg)
+    try:
+        base = load_baseline(cfg)
+    except BaselineBroken as e:
+        return [f"假绿检测基线坏了：{e}。先恢复原文件；"
+                f"确实要重建才用 adone integrity --accept-baseline \"理由\""]
     if base is None:
         return ['还没有假绿检测基线，跑一次 adone integrity --accept-baseline "建立初始基线"']
 
@@ -187,7 +202,17 @@ def cmd_integrity(cfg: Config, args) -> int:
               f"{sum(cur['skip_sites'].values())} 处跳过，理由「{reason}」")
         return 0
 
-    base = load_baseline(cfg)
+    try:
+        base = load_baseline(cfg)
+    except BaselineBroken as e:
+        msg = (f"假绿检测基线坏了：{e}。先恢复原文件；"
+               f"确实要重建才用 --accept-baseline \"理由\"")
+        if args.json:
+            print(json.dumps({"problems": [msg], "baseline_runtime_skips": None},
+                             ensure_ascii=False))
+        else:
+            print(msg, file=sys.stderr)
+        return 1
     if base is None:
         msg = '还没有基线快照。先跑一次 adone integrity --accept-baseline "建立初始基线"'
         if args.json:

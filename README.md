@@ -4,7 +4,7 @@
 
 # ActuallyDone - adone
 
-当前版本 **v1.8.1**，变更记录见 [CHANGELOG.md](CHANGELOG.md)。Python 3.11+，零第三方依赖。
+当前版本 **v1.8.2**，变更记录见 [CHANGELOG.md](CHANGELOG.md)。Python 3.11+，零第三方依赖。
 
 AI Agent 说「已完成，测试全部通过」时，你没法当场判断真假：它可能贴的是上一轮的日志，
 可能跑完测试又改了代码，也可能为了变绿把用例删了、断言去了、覆盖率下限调低了。

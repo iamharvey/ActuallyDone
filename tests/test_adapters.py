@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from actuallydone.adapters import CAP_TESTS, get
 from actuallydone.adapters.cpp_adapter import CppAdapter
-from actuallydone.adapters.go_adapter import GoAdapter, func_name
+from actuallydone.adapters.go_adapter import GoAdapter, func_name, total_percent
 from actuallydone.adapters.java_adapter import JavaAdapter
 from actuallydone.adapters.node_adapter import NodeAdapter
 from actuallydone.adapters.python_adapter import PythonAdapter
@@ -22,6 +22,22 @@ class TestGoAdapter(ProjectCase):
         self.assertEqual(res.skip_top, 1)
         self.assertEqual(res.coverage, 85.9)
         self.assertIn("TestSub/负数", res.passed_names)
+
+    def test_多包覆盖率不取最后一行(self):
+        text = ("ok  \tpkg/a\t0.1s\tcoverage: 10.0% of statements\n"
+                "--- PASS: TestA\n"
+                "ok  \tpkg/b\t0.1s\tcoverage: 100.0% of statements\n"
+                "--- PASS: TestB\n")
+        res = GoAdapter(self.root).parse_test_output(text)
+        self.assertIsNone(res.coverage)
+        self.assertEqual(res.passed, 2)
+
+    def test_cover_func的total行是总覆盖率(self):
+        text = ("pkg/a.go:1:\tA\t0.0%\n"
+                "pkg/b.go:1:\tB\t100.0%\n"
+                "total:\t\t\t\t\t(statements)\t40.0%\n")
+        self.assertEqual(total_percent(text), 40.0)
+        self.assertIsNone(total_percent("ok  coverage: 100.0% of statements\n"))
 
     def test_没开verbose时判为解析不出而不是零通过(self):
         res = GoAdapter(self.root).parse_test_output("ok  \tfixture/internal\t0.3s\n")

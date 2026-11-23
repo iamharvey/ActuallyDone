@@ -10,7 +10,7 @@ import sys
 from contextlib import redirect_stdout
 
 from ..gate import gate_problems, load_latest, run_gate, tree_hash
-from ..integrity import integrity_problems, load_baseline, scan
+from ..integrity import BaselineBroken, integrity_problems, load_baseline, scan
 from ..model import DimResult, Metric
 
 
@@ -51,7 +51,12 @@ def run(ctx) -> DimResult:
         res.add("错误", "测试完整性", p)
 
     cur = scan(cfg)
-    base = load_baseline(cfg)
+    try:
+        base = load_baseline(cfg)
+    except BaselineBroken:
+        # 坏基线已经由 integrity_problems 记成错误。这里再提示「建立初始基线」
+        # 就会把人引去用当前这棵树覆盖坏文件。
+        base = None
     steps = {s["name"]: s for s in receipt.get("steps", [])}
     failed_steps = [n for n, s in steps.items() if not s.get("ok")]
 
@@ -74,7 +79,7 @@ def run(ctx) -> DimResult:
                "、".join(failed_steps) if failed_steps else "每步都过",
                "good" if not failed_steps else "bad"),
     ]
-    if base is None:
+    if base is None and not any("基线坏了" in f.message for f in res.findings):
         res.notes.append('还没有假绿检测基线：跑 adone integrity --accept-baseline "建立初始基线"。')
     res.notes.append(f"回执生成于 {receipt.get('created_at', '?')}，"
                      f"树 {receipt.get('tree', {}).get('file_count', '?')} 个文件；"
